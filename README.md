@@ -63,12 +63,26 @@ The app expects Lavish at `/opt/homebrew/bin/lavish-axi` by default. If `command
 LAVISH_AXI_BIN="$(command -v lavish-axi)" npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The library refreshes when the page loads and whenever you press the refresh button.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The library refreshes when the page loads and whenever you press the refresh button.
 
-To use another local UI port, set it explicitly for both services:
+Both the UI and the companion API bind `127.0.0.1` only. If something else already owns port 3000 (on this Mac, Tailscale Serve), pick a free loopback port and point Serve at it:
 
 ```bash
 LAVISH_TRACKER_UI_PORT=3007 npm run dev
+```
+
+Tailscale Serve, not Funnel, publishes the library on the tailnet. The browser uses `http://127.0.0.1:4318` on loopback and `https://<tailnet-host>:4318` when the UI is opened through Serve. Allow that UI origin on the companion API:
+
+```bash
+LAVISH_TRACKER_UI_PORT=3007 \
+LAVISH_TRACKER_PUBLIC_HOST=mac-studio.tail1c136e.ts.net \
+LAVISH_TRACKER_PUBLIC_ORIGIN=https://mac-studio.tail1c136e.ts.net:3000 \
+npm start
+```
+
+```bash
+tailscale serve --bg 3000 http://127.0.0.1:3007
+tailscale serve --bg 4318 http://127.0.0.1:4318
 ```
 
 ## Production-style local run
@@ -78,7 +92,7 @@ npm run build
 npm start
 ```
 
-The web UI listens on localhost and its filesystem companion service listens on `127.0.0.1:4318`. The companion service accepts browser requests only from `localhost` or `127.0.0.1` on the configured UI port, issues a fresh in-memory authorization token each time it starts, and limits artifact operations to files discovered by the same bounded scan used to build the library.
+The web UI listens on `127.0.0.1` and its filesystem companion service listens on `127.0.0.1:4318`. The companion service accepts browser requests only from `localhost` or `127.0.0.1` on the configured UI port (plus `LAVISH_TRACKER_PUBLIC_ORIGIN` when set), issues a fresh in-memory authorization token each time it starts, and limits artifact operations to files discovered by the same bounded scan used to build the library.
 
 ## License
 

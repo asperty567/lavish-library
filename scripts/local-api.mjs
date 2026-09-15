@@ -37,6 +37,9 @@ const ALLOWED_WEB_ORIGINS = new Set([
   `http://localhost:${UI_PORT}`,
   `http://127.0.0.1:${UI_PORT}`,
 ]);
+const publicOrigin = String(process.env.LAVISH_TRACKER_PUBLIC_ORIGIN || '').replace(/\/$/, '');
+if (publicOrigin) ALLOWED_WEB_ORIGINS.add(publicOrigin);
+const publicHost = String(process.env.LAVISH_TRACKER_PUBLIC_HOST || '').trim();
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
@@ -820,7 +823,9 @@ function tokenAllowed(value) {
 }
 
 function hostAllowed(value) {
-  return value === `${HOST}:${PORT}` || value === `localhost:${PORT}`;
+  if (value === `${HOST}:${PORT}` || value === `localhost:${PORT}`) return true;
+  if (publicHost && value === `${publicHost}:${PORT}`) return true;
+  return false;
 }
 
 function json(res, status, value, origin = '') {

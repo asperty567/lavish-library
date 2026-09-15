@@ -51,11 +51,12 @@ export default defineConfig(async () => {
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
     server: {
+      host: '127.0.0.1',
       port: uiPort,
       strictPort: true,
       ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
     },
-    preview: { port: uiPort, strictPort: true },
+    preview: { host: '127.0.0.1', port: uiPort, strictPort: true },
     plugins: [
       vinext(),
       sites(),

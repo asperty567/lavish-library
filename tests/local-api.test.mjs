@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readdir, writeFile } from 'node:fs/promises';
+import http from 'node:http';
 import { after, before, test } from 'node:test';
 import os from 'node:os';
 import path from 'node:path';
@@ -137,6 +138,52 @@ test('rejects hostile browser origins and requires a session token', async () =>
   const ipSession = await fetch(`${api}/session`, { headers: { origin: ipOrigin } });
   assert.equal(ipSession.status, 200);
   assert.equal(ipSession.headers.get('access-control-allow-origin'), ipOrigin);
+});
+
+test('allows the configured Tailscale UI origin and Serve host', async () => {
+  const publicHost = 'mac-studio.tail1c136e.ts.net';
+  const publicOrigin = `https://${publicHost}:3000`;
+  const servicePort = port + 2;
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-tailscale-'));
+  const publicService = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      LAVISH_TRACKER_API_PORT: String(servicePort),
+      LAVISH_TRACKER_UI_PORT: '3007',
+      LAVISH_TRACKER_PUBLIC_HOST: publicHost,
+      LAVISH_TRACKER_PUBLIC_ORIGIN: publicOrigin,
+      LAVISH_TRACKER_CONFIG_DIR: configDir,
+      LAVISH_AXI_BIN: '/usr/bin/true',
+    },
+    stdio: 'ignore',
+  });
+
+  try {
+    await waitForService(servicePort);
+    const sessionResponse = await fetch(`http://127.0.0.1:${servicePort}/api/session`, { headers: { origin: publicOrigin } });
+    const session = await sessionResponse.json();
+    assert.equal(sessionResponse.status, 200);
+    assert.equal(sessionResponse.headers.get('access-control-allow-origin'), publicOrigin);
+    assert.equal(typeof session.token, 'string');
+
+    const served = await new Promise((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: servicePort,
+        path: '/health',
+        headers: { host: `${publicHost}:${servicePort}` },
+      }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(served, 200);
+  } finally {
+    publicService.kill('SIGTERM');
+  }
 });
 
 test('ignores archive side effects when resolving one artifact', async () => {

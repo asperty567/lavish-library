@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.scribe.lavish-library</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/admin/Projects/lavish-library</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/opt/node@24/bin/node</string>
+    <string>/Users/admin/Projects/lavish-library/scripts/run-local.mjs</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LAVISH_AXI_BIN</key>
+    <string>/opt/homebrew/bin/lavish-axi</string>
+    <key>LAVISH_TRACKER_UI_PORT</key>
+    <string>3007</string>
+    <key>LAVISH_TRACKER_PUBLIC_HOST</key>
+    <string>mac-studio.tail1c136e.ts.net</string>
+    <key>LAVISH_TRACKER_PUBLIC_ORIGIN</key>
+    <string>https://mac-studio.tail1c136e.ts.net:3000</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/admin/Library/Logs/scribe/lavish-library.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/admin/Library/Logs/scribe/lavish-library.err.log</string>
+</dict>
+</plist>

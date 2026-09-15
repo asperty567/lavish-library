@@ -1,10 +1,15 @@
-const API_ORIGIN = 'http://127.0.0.1:4318';
+function apiOrigin() {
+  if (typeof window === 'undefined') return 'http://127.0.0.1:4318';
+  const { hostname, protocol } = window.location;
+  if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1') return 'http://127.0.0.1:4318';
+  return `${protocol}//${hostname}:4318`;
+}
 
 let tokenPromise: Promise<string> | null = null;
 
 async function sessionToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch(`${API_ORIGIN}/api/session`, { cache: 'no-store' })
+    tokenPromise = fetch(`${apiOrigin()}/api/session`, { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || typeof result.token !== 'string') throw new Error(result.error || 'Could not authorize the local library service.');
@@ -22,7 +27,7 @@ async function request(path: string, init: RequestInit, retry: boolean): Promise
   const token = await sessionToken();
   const headers = new Headers(init.headers);
   headers.set('x-lavish-token', token);
-  const response = await fetch(`${API_ORIGIN}/api${path}`, { ...init, headers });
+  const response = await fetch(`${apiOrigin()}/api${path}`, { ...init, headers });
   if (response.status === 401 && retry) {
     tokenPromise = null;
     return request(path, init, false);
