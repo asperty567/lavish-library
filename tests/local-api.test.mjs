@@ -145,6 +145,23 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
   const publicOrigin = `https://${publicHost}:3000`;
   const servicePort = port + 2;
   const configDir = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-tailscale-'));
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-tailscale-state-'));
+  const project = path.join(configDir, 'Signal Project');
+  const lavishDir = path.join(project, '.lavish');
+  const lavishFile = path.join(lavishDir, 'identity-plan.html');
+  await mkdir(lavishDir, { recursive: true });
+  await writeFile(lavishFile, '<!doctype html><title>Identity migration plan</title>');
+  await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Signal Project' }], archiveRoot: null }));
+  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({
+    sessions: {
+      demo: {
+        file: lavishFile,
+        status: 'open',
+        url: 'http://127.0.0.1:4387/session/tailscale-demo',
+        updated_at: '2026-08-30T00:00:00.000Z',
+      },
+    },
+  }));
   const publicService = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,
     env: {
@@ -154,6 +171,7 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
       LAVISH_TRACKER_PUBLIC_HOST: publicHost,
       LAVISH_TRACKER_PUBLIC_ORIGIN: publicOrigin,
       LAVISH_TRACKER_CONFIG_DIR: configDir,
+      LAVISH_AXI_STATE_DIR: stateDir,
       LAVISH_AXI_BIN: '/usr/bin/true',
     },
     stdio: 'ignore',
@@ -181,6 +199,23 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
       req.end();
     });
     assert.equal(served, 200);
+
+    const libraryResponse = await fetch(`http://127.0.0.1:${servicePort}/api/library`, {
+      headers: { origin: publicOrigin, 'x-lavish-token': session.token },
+    });
+    const library = await libraryResponse.json();
+    assert.equal(libraryResponse.status, 200);
+    assert.equal(library.server.url, `http://${publicHost}:4387`);
+    assert.equal(library.artifacts[0].url, `http://${publicHost}:4387/session/tailscale-demo`);
+
+    const openResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+      method: 'POST',
+      headers: { origin: publicOrigin, 'content-type': 'application/json', 'x-lavish-token': session.token },
+      body: JSON.stringify({ file: lavishFile, reopen: false, query: null }),
+    });
+    const opened = await openResponse.json();
+    assert.equal(openResponse.status, 202);
+    assert.equal(opened.url, `http://${publicHost}:4387/session/tailscale-demo`);
   } finally {
     publicService.kill('SIGTERM');
   }

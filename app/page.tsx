@@ -105,6 +105,10 @@ function deltaLabel(value: number, unit: string) {
   return `${value > 0 ? '+' : ''}${value} ${unit}`;
 }
 
+function isLoopbackHost(hostname: string) {
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
+}
+
 function Icon({ name }: { name: 'spark' | 'folder' | 'search' | 'refresh' | 'plus' | 'grid' | 'list' | 'arrow' | 'more' | 'clock' | 'file' | 'archive' | 'history' | 'close' | 'restore' }) {
   const symbols = { spark: '✦', folder: '⌑', search: '⌕', refresh: '↻', plus: '+', grid: '⊞', list: '☷', arrow: '↗', more: '•••', clock: '◷', file: '◇', archive: '▣', history: '↶', close: '×', restore: '↺' };
   return <span aria-hidden="true" className={`icon icon-${name}`}>{symbols[name]}</span>;
@@ -255,6 +259,11 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Lavish could not be opened.');
+      const reviewUrl = typeof result.url === 'string' ? result.url : artifact.url;
+      if (reviewUrl && !isLoopbackHost(window.location.hostname)) {
+        window.location.assign(reviewUrl);
+        return;
+      }
       setNotice('');
       window.setTimeout(() => void loadLibrary(true), 900);
     } catch (error) {

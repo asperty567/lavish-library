@@ -816,6 +816,48 @@ function originAllowed(origin) {
   return ALLOWED_WEB_ORIGINS.has(origin);
 }
 
+function isPublicWebOrigin(origin) {
+  return Boolean(publicOrigin) && origin === publicOrigin;
+}
+
+function reviewUrlForClient(url, origin) {
+  if (!url) return null;
+  if (!isPublicWebOrigin(origin) || !publicHost) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '::1') {
+      parsed.hostname = publicHost;
+    }
+    const rewritten = parsed.toString();
+    return parsed.pathname === '/' && !String(url).endsWith('/') ? rewritten.replace(/\/$/, '') : rewritten;
+  } catch {
+    return url;
+  }
+}
+
+function libraryForClient(library, origin) {
+  return {
+    ...library,
+    server: { ...library.server, url: reviewUrlForClient(library.server.url, origin) || library.server.url },
+    artifacts: library.artifacts.map((artifact) => ({
+      ...artifact,
+      url: reviewUrlForClient(artifact.url, origin),
+    })),
+  };
+}
+
+async function waitForSessionUrl(file, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await scanKnownArtifacts({ force: true });
+    const artifact = await artifactForFile(file);
+    if (artifact.url) return artifact.url;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  await scanKnownArtifacts({ force: true });
+  return (await artifactForFile(file)).url || null;
+}
+
 function tokenAllowed(value) {
   const supplied = Buffer.from(String(value || ''));
   const expected = Buffer.from(API_TOKEN);
@@ -887,7 +929,7 @@ const server = createServer(async (req, res) => {
     if (origin && url.pathname.startsWith('/api/') && !tokenAllowed(req.headers['x-lavish-token'])) {
       return json(res, 401, { error: 'The local browser session is not authorized.' }, origin);
     }
-    if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, await buildLibrary(), origin);
+    if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, libraryForClient(await buildLibrary(), origin), origin);
     if (req.method === 'GET' && url.pathname === '/api/insights') return json(res, 200, await buildInsights(Number(url.searchParams.get('days') || 90)), origin);
     if (req.method === 'GET' && url.pathname === '/api/artifacts/versions') return json(res, 200, await versionsFor(url.searchParams.get('file')), origin);
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, app: 'lavish-tracker' }, origin);
@@ -986,8 +1028,11 @@ const server = createServer(async (req, res) => {
       const args = [artifact.file];
       if (input.reopen) args.push('--reopen');
       spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
+      const sessionUrl = artifact.url || await waitForSessionUrl(artifact.file);
+      const urlForClient = reviewUrlForClient(sessionUrl, origin);
+      if (isPublicWebOrigin(origin) && !urlForClient) throw new Error('Lavish opened on the Mac, but no review URL was available on the tailnet.');
       await recordEvent('open', { artifactId: artifact.id, query: input.query, label: input.reopen ? 'Lavish reopened' : 'Lavish opened' });
-      return json(res, 202, { ok: true }, origin);
+      return json(res, 202, { ok: true, url: urlForClient }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/reveal') {
       const input = await body(req);
