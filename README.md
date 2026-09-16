@@ -66,23 +66,25 @@ LAVISH_AXI_BIN="$(command -v lavish-axi)" npm run dev
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The library refreshes when the page loads and whenever you press the refresh button.
 
-Both the UI and the companion API bind `127.0.0.1` only. If something else already owns port 3000 (on this Mac, Tailscale Serve), pick a free loopback port and point Serve at it:
+Both the UI and the companion API bind `127.0.0.1` only. Tailscale Serve, not Funnel, publishes that same loopback port as `https://<tailnet-host>:3000`. Do not point Serve at `:3007` — that leaves the tailnet Open returning 502.
+
+To use another local UI port on a machine without Serve on 3000:
 
 ```bash
 LAVISH_TRACKER_UI_PORT=3007 npm run dev
 ```
 
-Tailscale Serve, not Funnel, publishes the library on the tailnet. The browser uses `http://127.0.0.1:4318` on loopback and `https://<tailnet-host>:4318` when the UI is opened through Serve. Allow that UI origin on the companion API:
+On Studio, keep the UI on 3000 and allow the tailnet origin on the companion API:
 
 ```bash
-LAVISH_TRACKER_UI_PORT=3007 \
+LAVISH_TRACKER_UI_PORT=3000 \
 LAVISH_TRACKER_PUBLIC_HOST=mac-studio.tail1c136e.ts.net \
 LAVISH_TRACKER_PUBLIC_ORIGIN=https://mac-studio.tail1c136e.ts.net:3000 \
 npm start
 ```
 
 ```bash
-tailscale serve --bg 3000 http://127.0.0.1:3007
+tailscale serve --bg 3000 http://127.0.0.1:3000
 tailscale serve --bg 4318 http://127.0.0.1:4318
 ```
 

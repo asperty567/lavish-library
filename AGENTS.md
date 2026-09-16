@@ -6,7 +6,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 ## Local hosting
 
-Match RetailScribe on `:3003`: listen on `127.0.0.1:3000` and Tailscale Serve `:3000` to that same loopback port. Do not bind `0.0.0.0`. `vinext start` ignores `vite.config.ts` and must stay on an internal port (`LAVISH_TRACKER_SITE_PORT`); `scripts/ui-proxy.mjs` owns `:3000`.
+Match RetailScribe on `:3003`: listen on `127.0.0.1:3000` and Tailscale Serve `:3000` to that same loopback port. Do not bind `0.0.0.0`. `vinext start` ignores `vite.config.ts` and must stay on an internal port (`LAVISH_TRACKER_SITE_PORT`); `scripts/ui-proxy.mjs` owns `:3000`. If a loaded LaunchAgent still has `LAVISH_TRACKER_UI_PORT=3007`, `scripts/ui-proxy-ports.mjs` also binds `:3000` whenever `LAVISH_TRACKER_PUBLIC_ORIGIN` is the catalog.
 
 Studio Serve mapping and LaunchAgent env live in `scripts/macos/com.scribe.lavish-library.plist`. Hostname `/` on 443 proxies to `127.0.0.1:3000` so a desktop click without `:3000` is not Funnel 404. Opening a Lavish session from the tailnet UI must be `https://mac-studio.tail1c136e.ts.net:4389/session/<id>`. Never port 4387. Rewrite lives in `reviewUrlForClient` in `scripts/local-api.mjs`.
 
