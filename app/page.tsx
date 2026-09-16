@@ -441,6 +441,7 @@ export default function Home() {
         <header className="topbar">
           {section === 'library' ? <>
             <label className="search-box">
+              <span className="sr-only">Search library</span>
               <Icon name="search" />
               <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search lavishes, projects, or paths…" />
               <kbd>⌘ K</kbd>
@@ -505,10 +506,12 @@ export default function Home() {
             </div>
           </div>
 
-          {notice && <div className="notice" role="status">{notice}</div>}
+          {notice && <div className="notice" role="alert">{notice}</div>}
 
           {loading ? (
-            <div className="loading-grid">{[1, 2, 3, 4, 5, 6].map((item) => <div className="skeleton" key={item} />)}</div>
+            <div className="loading-grid" role="status" aria-busy="true" aria-label="Loading library">{[1, 2, 3, 4, 5, 6].map((item) => <div className="skeleton" key={item} />)}</div>
+          ) : artifacts.length === 0 && notice ? (
+            <div className="empty-state empty-state-error"><div><Icon name="file" /></div><h2>Library did not load</h2><p>{notice}</p><button onClick={() => void loadLibrary()}>Retry</button></div>
           ) : artifacts.length === 0 ? (
             <div className="empty-state"><div><Icon name="spark" /></div><h2>No lavishes found here yet</h2><p>Add a project folder, or create a <code>.lavish</code> artifact and refresh.</p><button onClick={() => setShowAdd(true)}>Add your first folder</button></div>
           ) : (
@@ -521,7 +524,7 @@ export default function Home() {
                     <div className="card-preview">
                       <div className="preview-chrome"><i /><i /><i /><span>{artifact.title}</span></div>
                       <div className="preview-content"><span /><strong>{artifact.title}</strong><p>{artifact.description || 'A Lavish review surface'}</p><div><i /><i /><i /></div></div>
-                      <div className="card-actions">{artifact.exists && artifact.url ? <a href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></a> : <button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button>}</div>
+                      <div className="card-actions">{artifact.exists && artifact.url ? <a href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></a> : <button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists} title={!artifact.exists ? 'That file is missing on this Mac' : undefined}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button>}</div>
                     </div>
                     <div className="card-body">
                       <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
