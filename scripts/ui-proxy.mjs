@@ -7,9 +7,8 @@ const apiPort = Number(process.env.LAVISH_TRACKER_API_PORT || 4318);
 
 function route(url, headers = {}) {
   const path = String(url || '/').split('?')[0];
-  const accept = String(headers.accept || '');
-  const rsc = headers.rsc || headers['RSC'];
-  if ((path === '/' || path === '') && !rsc && accept.includes('text/html')) {
+  const rsc = headers.rsc || headers.RSC || headers['next-router-state-tree'];
+  if ((path === '/' || path === '') && !rsc) {
     return { port: apiPort, path: '/api/landing' };
   }
   if (path === '/health' || path.startsWith('/api')) return { port: apiPort, path: url };
