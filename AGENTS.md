@@ -10,7 +10,7 @@ Do not bind the UI to `0.0.0.0:3000`. Tailscale Serve already owns TCP 3000 and 
 
 Studio Serve mapping and LaunchAgent env live in `scripts/macos/com.scribe.lavish-library.plist`. Not Funnel. Opening a Lavish session from the tailnet UI follows the lavish-axi MagicDNS URL on port 4387, rewriting `127.0.0.1` in `scripts/local-api.mjs`.
 
-Desktop drops default to `~/Desktop/from-mini/firstmate` (`LAVISH_TRACKER_DROP_DIR`). Open for those files returns `/api/artifacts/file?id=…` on the UI origin (`LAVISH_TRACKER_PUBLIC_ORIGIN`, port 3000), not `:4318`. `scripts/run-local.mjs` puts a same-origin proxy on the UI port in front of vinext and the companion API.
+Desktop drops default to `~/Desktop/from-mini/firstmate` (`LAVISH_TRACKER_DROP_DIR`). A document GET of `/` on the UI origin serves `relay-onboard-home-notify-welcome.portable.html` (`LAVISH_TRACKER_LANDING_FILE`). Open for other drops stays on `/api/artifacts/file?id=…`. `scripts/run-local.mjs` proxies `/api` on the UI port.
 
 ## Maintaining this file
 

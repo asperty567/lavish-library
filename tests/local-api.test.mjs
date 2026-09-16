@@ -305,6 +305,7 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
   const dropDir = path.join(dropFixture, 'from-mini', 'firstmate');
   const pngFile = path.join(dropDir, 'Beautyline_ShortDesc_Ingredients.png');
   const storyboardFile = path.join(dropDir, 'relay-partner-flow-phase0-storyboard.html');
+  const landingFile = path.join(dropDir, 'relay-onboard-home-notify-welcome.portable.html');
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
   const publicHost = 'mac-studio.tail1c136e.ts.net';
   const publicOrigin = `https://${publicHost}:3000`;
@@ -312,6 +313,7 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
   await Promise.all([mkdir(dropDir, { recursive: true }), mkdir(configDir, { recursive: true }), mkdir(stateDir, { recursive: true })]);
   await writeFile(pngFile, png);
   await writeFile(storyboardFile, '<!doctype html><title>Relay partner flow phase 0</title><p>Storyboard</p>');
+  await writeFile(landingFile, '<!doctype html><title>Relay first login: Home Screen, notifications, Welcome</title><h1>First login should be three screens</h1>');
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [], archiveRoot: null }));
   await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: {} }));
 
@@ -366,6 +368,14 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
     assert.equal(fileResponse.status, 200);
     assert.equal(fileResponse.headers.get('content-type'), 'image/png');
     assert.deepEqual(body, png);
+
+    const landingResponse = await fetch(`http://127.0.0.1:${servicePort}/api/landing`, {
+      headers: { accept: 'text/html', 'sec-fetch-site': 'cross-site' },
+    });
+    const landingHtml = await landingResponse.text();
+    assert.equal(landingResponse.status, 200);
+    assert.match(landingResponse.headers.get('content-type'), /text\/html/);
+    assert.match(landingHtml, /First login should be three screens/);
 
     const unknown = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/file?id=deadbeefdead`);
     assert.equal(unknown.status, 400);

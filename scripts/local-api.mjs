@@ -606,14 +606,36 @@ function shouldOpenInBrowser(artifact) {
   return artifact.kind === 'drop' || !isHtmlFile(artifact.file);
 }
 
+async function landingArtifact() {
+  const requested = String(process.env.LAVISH_TRACKER_LANDING_FILE || 'relay-onboard-home-notify-welcome.portable.html').trim();
+  const names = [...new Set([requested, 'relay-onboard-home-notify-welcome.portable.html', 'relay-partner-flow-phase0-storyboard.html'].filter(Boolean))];
+  const { artifactPaths } = await scanKnownArtifacts();
+  const matches = [...artifactPaths].filter((file) => names.includes(path.basename(file)));
+  if (!matches.length) throw new Error('Landing file is not in the library.');
+  matches.sort((a, b) => names.indexOf(path.basename(a)) - names.indexOf(path.basename(b)));
+  const preferred = path.basename(matches[0]);
+  let chosen = matches[0];
+  let latest = 0;
+  for (const file of matches.filter((item) => path.basename(item) === preferred)) {
+    const time = (await stat(file).catch(() => null))?.mtimeMs || 0;
+    if (time >= latest) {
+      latest = time;
+      chosen = file;
+    }
+  }
+  return artifactForFile(chosen);
+}
+
 function sendArtifactFile(res, artifact, origin) {
   const type = FILE_CONTENT_TYPES[path.extname(artifact.file).toLowerCase()] || 'application/octet-stream';
   const headers = {
     'content-type': type,
     'cache-control': 'no-store',
-    'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(path.basename(artifact.file))}`,
     'x-content-type-options': 'nosniff',
   };
+  if (!String(type).startsWith('text/html')) {
+    headers['content-disposition'] = `inline; filename*=UTF-8''${encodeURIComponent(path.basename(artifact.file))}`;
+  }
   if (originAllowed(origin)) {
     headers['access-control-allow-origin'] = origin;
     headers.vary = 'origin';
@@ -1045,7 +1067,7 @@ const server = createServer(async (req, res) => {
   } catch {
     return json(res, 400, { error: 'Request failed.' }, origin);
   }
-  const isPublicFileGet = req.method === 'GET' && url.pathname === '/api/artifacts/file';
+  const isPublicFileGet = req.method === 'GET' && (url.pathname === '/api/artifacts/file' || url.pathname === '/api/landing');
   const sameOriginFetch = String(req.headers['sec-fetch-site'] || '') === 'same-origin';
   if (!origin && req.headers['sec-fetch-site'] && !isPublicFileGet && !sameOriginFetch) return json(res, 403, { error: 'Browser origin is required.' });
   if (req.method === 'OPTIONS') {
@@ -1057,6 +1079,9 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/session') {
       if (!origin) return json(res, 403, { error: 'Open Lavish Library in its local browser page first.' });
       return json(res, 200, { token: API_TOKEN }, origin);
+    }
+    if (req.method === 'GET' && url.pathname === '/api/landing') {
+      return sendArtifactFile(res, await landingArtifact(), origin);
     }
     if (isPublicFileGet) {
       const artifact = await artifactById(url.searchParams.get('id'));
