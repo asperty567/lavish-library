@@ -8,7 +8,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 Do not bind the UI to `0.0.0.0:3000`. Tailscale Serve already owns TCP 3000 and proxies to loopback. `scripts/run-local.mjs` must pass `-H 127.0.0.1` and `-p` because `vinext start` ignores `vite.config.ts` and defaults to all interfaces on 3000.
 
-Studio Serve mapping and LaunchAgent env live in `scripts/macos/com.scribe.lavish-library.plist`. Not Funnel. Opening an artifact from the tailnet UI follows the lavish-axi MagicDNS URL on port 4387, rewriting `127.0.0.1` in `scripts/local-api.mjs`.
+Studio Serve mapping and LaunchAgent env live in `scripts/macos/com.scribe.lavish-library.plist`. Not Funnel. Opening a Lavish session from the tailnet UI follows the lavish-axi MagicDNS URL on port 4387, rewriting `127.0.0.1` in `scripts/local-api.mjs`.
+
+Desktop drops default to `~/Desktop/from-mini/firstmate` (`LAVISH_TRACKER_DROP_DIR`). Open for those files returns `/api/artifacts/file?id=…` so a phone can view HTML, images, and video without a Mac path.
 
 ## Maintaining this file
 

@@ -55,7 +55,7 @@ before(async () => {
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Signal Project' }], archiveRoot: null }));
   service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,
-    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_UI_PORT: '3007', LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true' },
+    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_UI_PORT: '3007', LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true', LAVISH_TRACKER_DROP_DIR: '' },
     stdio: 'ignore',
   });
   await waitForApi();
@@ -173,6 +173,7 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
       LAVISH_TRACKER_CONFIG_DIR: configDir,
       LAVISH_AXI_STATE_DIR: stateDir,
       LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_TRACKER_DROP_DIR: '',
     },
     stdio: 'ignore',
   });
@@ -240,7 +241,7 @@ test('ignores archive side effects when resolving one artifact', async () => {
 
   const archiveService = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,
-    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(servicePort), LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true' },
+    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(servicePort), LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true', LAVISH_TRACKER_DROP_DIR: '' },
     stdio: 'ignore',
   });
 
@@ -295,4 +296,80 @@ test('library refresh updates the cached artifact allowlist', async () => {
   const versions = await afterRefresh.json();
   assert.equal(afterRefresh.status, 200);
   assert.deepEqual(versions.versions, []);
+});
+
+test('indexes Desktop drop files and opens them over HTTP for the tailnet', async () => {
+  const dropFixture = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-drop-'));
+  const configDir = path.join(dropFixture, 'tracker-state');
+  const stateDir = path.join(dropFixture, 'lavish-state');
+  const dropDir = path.join(dropFixture, 'from-mini', 'firstmate');
+  const pngFile = path.join(dropDir, 'Beautyline_ShortDesc_Ingredients.png');
+  const storyboardFile = path.join(dropDir, 'relay-partner-flow-phase0-storyboard.html');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const publicHost = 'mac-studio.tail1c136e.ts.net';
+  const publicOrigin = `https://${publicHost}:3000`;
+  const servicePort = port + 3;
+  await Promise.all([mkdir(dropDir, { recursive: true }), mkdir(configDir, { recursive: true }), mkdir(stateDir, { recursive: true })]);
+  await writeFile(pngFile, png);
+  await writeFile(storyboardFile, '<!doctype html><title>Relay partner flow phase 0</title><p>Storyboard</p>');
+  await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [], archiveRoot: null }));
+  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: {} }));
+
+  const dropService = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      LAVISH_TRACKER_API_PORT: String(servicePort),
+      LAVISH_TRACKER_UI_PORT: '3007',
+      LAVISH_TRACKER_PUBLIC_HOST: publicHost,
+      LAVISH_TRACKER_PUBLIC_ORIGIN: publicOrigin,
+      LAVISH_TRACKER_CONFIG_DIR: configDir,
+      LAVISH_AXI_STATE_DIR: stateDir,
+      LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_TRACKER_DROP_DIR: dropDir,
+    },
+    stdio: 'ignore',
+  });
+
+  try {
+    await waitForService(servicePort);
+    const sessionResponse = await fetch(`http://127.0.0.1:${servicePort}/api/session`, { headers: { origin: publicOrigin } });
+    const session = await sessionResponse.json();
+    assert.equal(sessionResponse.status, 200);
+
+    const libraryResponse = await fetch(`http://127.0.0.1:${servicePort}/api/library`, {
+      headers: { origin: publicOrigin, 'x-lavish-token': session.token },
+    });
+    const library = await libraryResponse.json();
+    assert.equal(libraryResponse.status, 200);
+    const screenshot = library.artifacts.find((artifact) => artifact.file === pngFile);
+    const storyboard = library.artifacts.find((artifact) => artifact.file === storyboardFile);
+    assert.equal(screenshot?.kind, 'drop');
+    assert.equal(screenshot?.title, 'Beautyline ShortDesc Ingredients');
+    assert.equal(storyboard?.kind, 'drop');
+    assert.match(storyboard?.title || '', /Relay partner flow phase 0/i);
+    assert.equal(screenshot.url, `https://${publicHost}:${servicePort}/api/artifacts/file?id=${screenshot.id}`);
+
+    const openResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+      method: 'POST',
+      headers: { origin: publicOrigin, 'content-type': 'application/json', 'x-lavish-token': session.token },
+      body: JSON.stringify({ file: pngFile, reopen: false, query: null }),
+    });
+    const opened = await openResponse.json();
+    assert.equal(openResponse.status, 202);
+    assert.equal(opened.url, screenshot.url);
+
+    const fileResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/file?id=${screenshot.id}`, {
+      headers: { 'sec-fetch-site': 'cross-site' },
+    });
+    const body = Buffer.from(await fileResponse.arrayBuffer());
+    assert.equal(fileResponse.status, 200);
+    assert.equal(fileResponse.headers.get('content-type'), 'image/png');
+    assert.deepEqual(body, png);
+
+    const unknown = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/file?id=deadbeefdead`);
+    assert.equal(unknown.status, 400);
+  } finally {
+    dropService.kill('SIGTERM');
+  }
 });

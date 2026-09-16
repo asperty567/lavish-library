@@ -7,6 +7,7 @@ A private, local-first browser library for finding and reopening Lavish review s
 - Reads Lavish's central session history from `~/.lavish-axi/state.json`
 - Automatically groups known artifacts by project
 - Finds additional HTML artifacts in project `.lavish` folders
+- Indexes Desktop drops in `~/Desktop/from-mini/firstmate` so they open in a phone browser over Tailscale
 - Shows session state, server availability, last-used time, edit time, and file size
 - Searches, filters, sorts, and switches between grid and list views
 - Opens or reopens an artifact with `lavish-axi`
@@ -85,6 +86,8 @@ tailscale serve --bg 3000 http://127.0.0.1:3007
 tailscale serve --bg 4318 http://127.0.0.1:4318
 ```
 
+Files dropped in `~/Desktop/from-mini/firstmate` show up as the **from-mini** project. Open on the tailnet serves the file at `/api/artifacts/file?id=…` instead of a Mac path. Override the folder with `LAVISH_TRACKER_DROP_DIR`, or set it empty to disable.
+
 ## Production-style local run
 
 ```bash
@@ -92,7 +95,7 @@ npm run build
 npm start
 ```
 
-The web UI listens on `127.0.0.1` and its filesystem companion service listens on `127.0.0.1:4318`. The companion service accepts browser requests only from `localhost` or `127.0.0.1` on the configured UI port (plus `LAVISH_TRACKER_PUBLIC_ORIGIN` when set), issues a fresh in-memory authorization token each time it starts, and limits artifact operations to files discovered by the same bounded scan used to build the library.
+The web UI listens on `127.0.0.1` and its filesystem companion service listens on `127.0.0.1:4318`. The companion service accepts browser requests only from `localhost` or `127.0.0.1` on the configured UI port (plus `LAVISH_TRACKER_PUBLIC_ORIGIN` when set), issues a fresh in-memory authorization token each time it starts, and limits artifact operations to files discovered by the same bounded scan used to build the library. Known drop files can be opened with a top-level GET to `/api/artifacts/file` so a phone can view them.
 
 ## License
 

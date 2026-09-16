@@ -9,7 +9,7 @@ type Project = {
   id: string;
   name: string;
   path: string;
-  source: 'added' | 'automatic';
+  source: 'added' | 'automatic' | 'drop';
   exists: boolean;
   artifactCount: number;
 };
@@ -30,6 +30,7 @@ type Artifact = {
   url: string | null;
   endedBy: 'user' | 'agent' | null;
   sessionMessages: number;
+  kind?: 'lavish' | 'drop';
   versionCount: number;
   lastBackedUpAt: string | null;
   backupError: string | null;

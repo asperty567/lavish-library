@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { constants, watch } from 'node:fs';
+import { constants, createReadStream, watch } from 'node:fs';
 import { access, copyFile, cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
@@ -40,6 +40,42 @@ const ALLOWED_WEB_ORIGINS = new Set([
 const publicOrigin = String(process.env.LAVISH_TRACKER_PUBLIC_ORIGIN || '').replace(/\/$/, '');
 if (publicOrigin) ALLOWED_WEB_ORIGINS.add(publicOrigin);
 const publicHost = String(process.env.LAVISH_TRACKER_PUBLIC_HOST || '').trim();
+const DEFAULT_DROP_DIR = path.join(os.homedir(), 'Desktop', 'from-mini', 'firstmate');
+const DROP_FILE_EXTENSIONS = new Set(['.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.mp4', '.txt', '.md']);
+const FILE_CONTENT_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.mp4': 'video/mp4',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+};
+
+function configuredDropDir() {
+  if (Object.prototype.hasOwnProperty.call(process.env, 'LAVISH_TRACKER_DROP_DIR')) {
+    const value = String(process.env.LAVISH_TRACKER_DROP_DIR || '').trim();
+    return value ? path.resolve(value) : null;
+  }
+  return DEFAULT_DROP_DIR;
+}
+
+function isHtmlFile(file) {
+  return /\.html?$/i.test(file);
+}
+
+function isDropFile(file) {
+  const dropDir = configuredDropDir();
+  return Boolean(dropDir && file.startsWith(`${dropDir}${path.sep}`));
+}
+
+function fallbackTitleFor(file) {
+  return path.basename(file).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
@@ -170,6 +206,24 @@ async function htmlFiles(root, depth = 0) {
   return files;
 }
 
+async function shareableFiles(root, depth = 0) {
+  if (depth > 4) return [];
+  let entries;
+  try { entries = await readdir(root, { withFileTypes: true }); } catch { return []; }
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (['node_modules', 'dist', 'build', 'vendor'].includes(entry.name)) continue;
+      files.push(...await shareableFiles(full, depth + 1));
+    } else if (entry.isFile() && DROP_FILE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
 function cleanText(value) {
   return String(value || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 }
@@ -185,6 +239,11 @@ async function htmlMetadata(file) {
   try { return metadataFromHtml(await readFile(file, 'utf8')); } catch { return { title: '', description: '' }; }
 }
 
+async function artifactMetadata(file) {
+  if (!isHtmlFile(file)) return { title: '', description: '' };
+  return htmlMetadata(file);
+}
+
 async function fileCacheKey(file) {
   try {
     const details = await stat(file);
@@ -196,8 +255,13 @@ async function fileCacheKey(file) {
 
 async function scanKnownArtifacts(options = {}) {
   const force = Boolean(options.force);
-  const [stateKey, configKey] = await Promise.all([fileCacheKey(STATE_FILE), fileCacheKey(CONFIG_FILE)]);
-  const cacheKey = `${stateKey}|${configKey}`;
+  const dropDir = configuredDropDir();
+  const [stateKey, configKey, dropKey] = await Promise.all([
+    fileCacheKey(STATE_FILE),
+    fileCacheKey(CONFIG_FILE),
+    dropDir ? fileCacheKey(dropDir) : Promise.resolve('none'),
+  ]);
+  const cacheKey = `${stateKey}|${configKey}|${dropKey}`;
   if (!force && knownArtifactsCache.value && knownArtifactsCache.key === cacheKey) {
     return knownArtifactsCache.value;
   }
@@ -216,6 +280,10 @@ async function scanKnownArtifacts(options = {}) {
       const normalized = path.resolve(item.path);
       projectMap.set(normalized, { id: idFor(normalized), name: item.name || path.basename(normalized), path: normalized, source: 'added' });
     }
+    if (dropDir && await exists(dropDir) && (await stat(dropDir)).isDirectory() && !projectMap.has(dropDir)) {
+      projectMap.set(dropDir, { id: idFor(dropDir), name: 'from-mini', path: dropDir, source: 'drop' });
+    }
+
     for (const session of sessions) {
       const root = projectRootFor(session.file);
       if (root && !projectMap.has(root)) projectMap.set(root, { id: idFor(root), name: path.basename(root), path: root, source: 'automatic' });
@@ -223,9 +291,13 @@ async function scanKnownArtifacts(options = {}) {
 
     const projectFiles = new Map();
     for (const project of projectMap.values()) {
-      const dirs = await findLavishDirs(project.path);
       const files = new Set();
-      for (const dir of dirs) for (const file of await htmlFiles(dir)) files.add(path.resolve(file));
+      if (project.source === 'drop' || (dropDir && project.path === dropDir)) {
+        for (const file of await shareableFiles(project.path)) files.add(path.resolve(file));
+      } else {
+        const dirs = await findLavishDirs(project.path);
+        for (const dir of dirs) for (const file of await htmlFiles(dir)) files.add(path.resolve(file));
+      }
       projectFiles.set(project.path, files);
     }
 
@@ -314,7 +386,7 @@ async function readManifest(config, artifact) {
 }
 
 async function snapshotArtifactNow(config, artifact, reason = 'scan') {
-  if (!config.archiveRoot || !artifact.exists) return null;
+  if (!config.archiveRoot || !artifact.exists || !isHtmlFile(artifact.file)) return null;
   const html = await readFile(artifact.file, 'utf8');
   const contentSha = sha256(html);
   const manifest = await readManifest(config, artifact);
@@ -417,8 +489,8 @@ async function buildLibrary() {
     if (!project) { project = looseProject; hasLoose = true; }
     const fileExists = await exists(file);
     const fileStat = fileExists ? await stat(file) : null;
-    const metadata = fileExists ? await htmlMetadata(file) : { title: '', description: '' };
-    const fallbackTitle = path.basename(file).replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const metadata = fileExists ? await artifactMetadata(file) : { title: '', description: '' };
+    const fallbackTitle = fallbackTitleFor(file);
     const chatDates = Array.isArray(session?.chat) ? session.chat.map((item) => item.at).filter(Boolean) : [];
     const lastUsedAt = [session?.updated_at, ...chatDates].filter(Boolean).sort().at(-1) || null;
     artifacts.push({
@@ -429,6 +501,7 @@ async function buildLibrary() {
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),
       url: session?.url || null, endedBy: session?.ended_by || null,
       sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
+      kind: isDropFile(file) ? 'drop' : 'lavish',
       versionCount: 0, lastBackedUpAt: null, backupError: null,
     });
   }
@@ -454,7 +527,7 @@ async function buildLibrary() {
   const projects = [...projectMap.values(), ...(hasLoose ? [looseProject] : [])].map((project) => ({
     ...project,
     artifactCount: artifacts.filter((artifact) => artifact.projectId === project.id).length,
-  })).filter((project) => project.artifactCount > 0 || project.source === 'added');
+  })).filter((project) => project.artifactCount > 0 || project.source === 'added' || project.source === 'drop');
 
   return {
     projects,
@@ -484,20 +557,19 @@ function projectForFile(file, projectMap) {
 
 async function artifactForFile(file) {
   const resolved = path.resolve(String(file || ''));
-  if (!/\.html?$/i.test(resolved) || !(await exists(resolved))) throw new Error('That Lavish file no longer exists.');
+  if (!(await exists(resolved))) throw new Error('That Lavish file no longer exists.');
   const fileStat = await stat(resolved).catch(() => null);
   if (!fileStat?.isFile()) throw new Error('That Lavish file no longer exists.');
   const { projectMap, sessions, artifactPaths } = await knownProjectMap();
   const session = sessions.find((candidate) => path.resolve(candidate.file || '') === resolved) || null;
   const project = projectForFile(resolved, projectMap);
   if (!artifactPaths.has(resolved)) throw new Error('That file is not a known Lavish artifact.');
-  const metadata = await htmlMetadata(resolved);
-  const fallbackTitle = path.basename(resolved).replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const metadata = await artifactMetadata(resolved);
   return {
     id: idFor(resolved),
     file: resolved,
     exists: true,
-    title: metadata.title || fallbackTitle,
+    title: metadata.title || fallbackTitleFor(resolved),
     description: metadata.description,
     projectId: project?.id || 'loose',
     projectName: project?.name || 'Loose & temporary',
@@ -507,13 +579,52 @@ async function artifactForFile(file) {
     url: session?.url || null,
     endedBy: session?.ended_by || null,
     sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
+    kind: isDropFile(resolved) ? 'drop' : 'lavish',
   };
+}
+
+async function artifactById(id) {
+  const artifactId = String(id || '');
+  if (!/^[a-f0-9]{12}$/i.test(artifactId)) throw new Error('That file is not a known Lavish artifact.');
+  const { artifactPaths } = await knownProjectMap();
+  for (const file of artifactPaths) {
+    if (idFor(file) === artifactId) return artifactForFile(file);
+  }
+  throw new Error('That file is not a known Lavish artifact.');
+}
+
+function fileOpenUrl(artifactId, origin) {
+  const filePath = `/api/artifacts/file?id=${encodeURIComponent(artifactId)}`;
+  if (isPublicWebOrigin(origin) && publicHost) return `https://${publicHost}:${PORT}${filePath}`;
+  return `http://${HOST}:${PORT}${filePath}`;
+}
+
+function shouldOpenInBrowser(artifact) {
+  return artifact.kind === 'drop' || !isHtmlFile(artifact.file);
+}
+
+function sendArtifactFile(res, artifact, origin) {
+  const type = FILE_CONTENT_TYPES[path.extname(artifact.file).toLowerCase()] || 'application/octet-stream';
+  const headers = {
+    'content-type': type,
+    'cache-control': 'no-store',
+    'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(path.basename(artifact.file))}`,
+    'x-content-type-options': 'nosniff',
+  };
+  if (originAllowed(origin)) {
+    headers['access-control-allow-origin'] = origin;
+    headers.vary = 'origin';
+  }
+  res.writeHead(200, headers);
+  const stream = createReadStream(artifact.file);
+  stream.on('error', () => { if (!res.writableEnded) res.end(); });
+  stream.pipe(res);
 }
 
 async function versionsFor(file) {
   const artifact = await artifactForFile(file);
   const config = await readConfig();
-  if (!config.archiveRoot) return { enabled: false, versions: [] };
+  if (!config.archiveRoot || !isHtmlFile(artifact.file)) return { enabled: Boolean(config.archiveRoot), versions: [] };
   const manifest = await readManifest(config, artifact);
   const currentHtml = await readFile(artifact.file, 'utf8');
   const currentSha = sha256(currentHtml);
@@ -841,7 +952,7 @@ function libraryForClient(library, origin) {
     server: { ...library.server, url: reviewUrlForClient(library.server.url, origin) || library.server.url },
     artifacts: library.artifacts.map((artifact) => ({
       ...artifact,
-      url: reviewUrlForClient(artifact.url, origin),
+      url: shouldOpenInBrowser(artifact) ? fileOpenUrl(artifact.id, origin) : reviewUrlForClient(artifact.url, origin),
     })),
   };
 }
@@ -914,17 +1025,27 @@ const server = createServer(async (req, res) => {
   const origin = String(req.headers.origin || '');
   if (!hostAllowed(String(req.headers.host || ''))) return json(res, 403, { error: 'Request host is not allowed.' });
   if (origin && !originAllowed(origin)) return json(res, 403, { error: 'Browser origin is not allowed.' });
-  if (!origin && req.headers['sec-fetch-site']) return json(res, 403, { error: 'Browser origin is required.' });
+  let url;
+  try {
+    url = new URL(req.url, `http://${HOST}:${PORT}`);
+  } catch {
+    return json(res, 400, { error: 'Request failed.' }, origin);
+  }
+  const isPublicFileGet = req.method === 'GET' && url.pathname === '/api/artifacts/file';
+  if (!origin && req.headers['sec-fetch-site'] && !isPublicFileGet) return json(res, 403, { error: 'Browser origin is required.' });
   if (req.method === 'OPTIONS') {
     if (!origin) return json(res, 400, { error: 'Browser origin is required.' });
     res.writeHead(204, { 'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type,x-lavish-token', vary: 'origin' });
     return res.end();
   }
   try {
-    const url = new URL(req.url, `http://${HOST}:${PORT}`);
     if (req.method === 'GET' && url.pathname === '/api/session') {
       if (!origin) return json(res, 403, { error: 'Open Lavish Library in its local browser page first.' });
       return json(res, 200, { token: API_TOKEN }, origin);
+    }
+    if (isPublicFileGet) {
+      const artifact = await artifactById(url.searchParams.get('id'));
+      return sendArtifactFile(res, artifact, origin);
     }
     if (origin && url.pathname.startsWith('/api/') && !tokenAllowed(req.headers['x-lavish-token'])) {
       return json(res, 401, { error: 'The local browser session is not authorized.' }, origin);
@@ -1025,6 +1146,11 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/artifacts/open') {
       const input = await body(req);
       const artifact = await artifactForFile(input.file);
+      if (shouldOpenInBrowser(artifact)) {
+        const urlForClient = fileOpenUrl(artifact.id, origin);
+        await recordEvent('open', { artifactId: artifact.id, query: input.query, label: 'File opened' });
+        return json(res, 202, { ok: true, url: urlForClient }, origin);
+      }
       const args = [artifact.file];
       if (input.reopen) args.push('--reopen');
       spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
