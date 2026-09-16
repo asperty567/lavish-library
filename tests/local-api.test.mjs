@@ -314,6 +314,7 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
   await writeFile(pngFile, png);
   await writeFile(storyboardFile, '<!doctype html><title>Relay partner flow phase 0</title><p>Storyboard</p>');
   await writeFile(landingFile, '<!doctype html><title>Relay first login: Home Screen, notifications, Welcome</title><h1>First login should be three screens</h1>');
+  await writeFile(path.join(dropDir, 'mc-acs-shopify-address-patterns-scout.report.md'), '# Not a Lavish\n');
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [], archiveRoot: null }));
   await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: {} }));
 
@@ -350,6 +351,7 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
     assert.equal(screenshot?.title, 'Beautyline ShortDesc Ingredients');
     assert.equal(storyboard?.kind, 'drop');
     assert.match(storyboard?.title || '', /Relay partner flow phase 0/i);
+    assert.equal(library.artifacts.some((artifact) => artifact.file.endsWith('.md') || /scout\.report/i.test(artifact.title)), false);
     assert.equal(screenshot.url, `${publicOrigin}/api/artifacts/file?id=${screenshot.id}`);
 
     const openResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {

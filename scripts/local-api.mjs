@@ -42,7 +42,7 @@ if (publicOrigin) ALLOWED_WEB_ORIGINS.add(publicOrigin);
 const publicHost = String(process.env.LAVISH_TRACKER_PUBLIC_HOST || '').trim();
 const sessionPort = Number(process.env.LAVISH_TRACKER_SESSION_PORT || 4389);
 const DEFAULT_DROP_DIR = path.join(os.homedir(), 'Desktop', 'from-mini', 'firstmate');
-const DROP_FILE_EXTENSIONS = new Set(['.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.mp4', '.txt', '.md']);
+const DROP_FILE_EXTENSIONS = new Set(['.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.mp4']);
 const FILE_CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.htm': 'text/html; charset=utf-8',
