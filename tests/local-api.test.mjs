@@ -206,8 +206,8 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
     });
     const library = await libraryResponse.json();
     assert.equal(libraryResponse.status, 200);
-    assert.equal(library.server.url, `http://${publicHost}:4387`);
-    assert.equal(library.artifacts[0].url, `http://${publicHost}:4387/session/tailscale-demo`);
+    assert.equal(library.server.url, `https://${publicHost}:4389`);
+    assert.equal(library.artifacts[0].url, `https://${publicHost}:4389/session/tailscale-demo`);
 
     const openResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
       method: 'POST',
@@ -216,7 +216,7 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
     });
     const opened = await openResponse.json();
     assert.equal(openResponse.status, 202);
-    assert.equal(opened.url, `http://${publicHost}:4387/session/tailscale-demo`);
+    assert.equal(opened.url, `https://${publicHost}:4389/session/tailscale-demo`);
   } finally {
     publicService.kill('SIGTERM');
   }
@@ -381,5 +381,56 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
     assert.equal(unknown.status, 400);
   } finally {
     dropService.kill('SIGTERM');
+  }
+});
+
+test('hides discovered drop copies when a live session has the same title', async () => {
+  const fixture = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-collapse-'));
+  const project = path.join(fixture, 'ACS Project');
+  const lavishDir = path.join(project, '.lavish');
+  const dropDir = path.join(fixture, 'from-mini', 'firstmate');
+  const configDir = path.join(fixture, 'tracker-state');
+  const stateDir = path.join(fixture, 'lavish-state');
+  const liveFile = path.join(lavishDir, 'ii-acs-packing.html');
+  const dropA = path.join(dropDir, 'ii-acs-packing.html');
+  const dropB = path.join(dropDir, 'ii-acs-packing.portable.html');
+  const servicePort = port + 4;
+  await Promise.all([mkdir(lavishDir, { recursive: true }), mkdir(dropDir, { recursive: true }), mkdir(configDir, { recursive: true }), mkdir(stateDir, { recursive: true })]);
+  const html = '<!doctype html><title>Instant Invoice to ACS packing, as operated today</title>';
+  await writeFile(liveFile, html);
+  await writeFile(dropA, html);
+  await writeFile(dropB, html);
+  await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'ACS Project' }], archiveRoot: null }));
+  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({
+    sessions: { live: { file: liveFile, status: 'open', url: 'http://127.0.0.1:4387/session/acs-live', updated_at: '2026-09-16T00:00:00.000Z' } },
+  }));
+
+  const service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      LAVISH_TRACKER_API_PORT: String(servicePort),
+      LAVISH_TRACKER_PUBLIC_HOST: 'mac-studio.tail1c136e.ts.net',
+      LAVISH_TRACKER_PUBLIC_ORIGIN: 'https://mac-studio.tail1c136e.ts.net:3000',
+      LAVISH_TRACKER_CONFIG_DIR: configDir,
+      LAVISH_AXI_STATE_DIR: stateDir,
+      LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_TRACKER_DROP_DIR: dropDir,
+    },
+    stdio: 'ignore',
+  });
+
+  try {
+    await waitForService(servicePort);
+    const origin = 'https://mac-studio.tail1c136e.ts.net:3000';
+    const session = await (await fetch(`http://127.0.0.1:${servicePort}/api/session`, { headers: { origin } })).json();
+    const library = await (await fetch(`http://127.0.0.1:${servicePort}/api/library`, { headers: { origin, 'x-lavish-token': session.token } })).json();
+    const packing = library.artifacts.filter((artifact) => artifact.title === 'Instant Invoice to ACS packing, as operated today');
+    assert.equal(packing.length, 1);
+    assert.equal(packing[0].sessionStatus, 'open');
+    assert.equal(packing[0].file, liveFile);
+    assert.equal(packing[0].url, 'https://mac-studio.tail1c136e.ts.net:4389/session/acs-live');
+  } finally {
+    service.kill('SIGTERM');
   }
 });

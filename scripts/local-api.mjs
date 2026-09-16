@@ -40,6 +40,7 @@ const ALLOWED_WEB_ORIGINS = new Set([
 const publicOrigin = String(process.env.LAVISH_TRACKER_PUBLIC_ORIGIN || '').replace(/\/$/, '');
 if (publicOrigin) ALLOWED_WEB_ORIGINS.add(publicOrigin);
 const publicHost = String(process.env.LAVISH_TRACKER_PUBLIC_HOST || '').trim();
+const sessionPort = Number(process.env.LAVISH_TRACKER_SESSION_PORT || 4389);
 const DEFAULT_DROP_DIR = path.join(os.homedir(), 'Desktop', 'from-mini', 'firstmate');
 const DROP_FILE_EXTENSIONS = new Set(['.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.mp4', '.txt', '.md']);
 const FILE_CONTENT_TYPES = {
@@ -506,6 +507,11 @@ async function buildLibrary() {
     });
   }
 
+  const liveTitles = new Set(artifacts.filter((artifact) => artifact.sessionStatus === 'open').map((artifact) => artifact.title));
+  if (liveTitles.size) {
+    artifacts.splice(0, artifacts.length, ...artifacts.filter((artifact) => artifact.sessionStatus === 'open' || artifact.kind !== 'drop' || !liveTitles.has(artifact.title)));
+  }
+
   let totalVersions = 0;
   let protectedArtifacts = 0;
   if (config.archiveRoot) {
@@ -961,8 +967,12 @@ function reviewUrlForClient(url, origin) {
   if (!isPublicWebOrigin(origin) || !publicHost) return url;
   try {
     const parsed = new URL(url);
-    if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '::1') {
+    if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '::1' || parsed.hostname === publicHost) {
+      parsed.protocol = 'https:';
       parsed.hostname = publicHost;
+    }
+    if (parsed.port === '4387' || parsed.port === String(sessionPort) || parsed.pathname.startsWith('/session/')) {
+      parsed.port = String(Number.isInteger(sessionPort) && sessionPort > 0 ? sessionPort : 4389);
     }
     const rewritten = parsed.toString();
     return parsed.pathname === '/' && !String(url).endsWith('/') ? rewritten.replace(/\/$/, '') : rewritten;
