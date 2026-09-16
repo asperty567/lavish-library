@@ -122,8 +122,12 @@ kbd { padding: 3px 6px; border: 1px solid #e1dbd2; border-radius: 5px; color: #9
 .preview-content div i:first-child { background: #ead7ce; }
 .card-actions { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(48 28 33 / 0%); opacity: 0; transition: .2s ease; }
 .artifact-card:hover .card-actions, .artifact-card:focus-within .card-actions { background: rgb(48 28 33 / 42%); opacity: 1; }
-.card-actions button { display: flex; align-items: center; gap: 6px; padding: 9px 13px; border: 0; border-radius: 9px; color: #fff; background: var(--wine); cursor: pointer; font-size: 11px; font-weight: 650; box-shadow: 0 8px 22px rgb(44 19 26 / 25%); }
+@media (hover: none) {
+  .card-actions { background: rgb(48 28 33 / 35%); opacity: 1; }
+}
+.card-actions button, .card-actions a { display: flex; align-items: center; gap: 6px; padding: 9px 13px; border: 0; border-radius: 9px; color: #fff; background: var(--wine); cursor: pointer; font-size: 11px; font-weight: 650; text-decoration: none; box-shadow: 0 8px 22px rgb(44 19 26 / 25%); }
 .card-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.open-link { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; color: #fff; background: var(--wine); font-size: 10px; font-weight: 750; letter-spacing: .04em; text-decoration: none; text-transform: uppercase; }
 .card-body { padding: 17px 17px 15px; }
 .card-heading { min-width: 0; display: flex; align-items: start; justify-content: space-between; gap: 8px; }
 .card-heading > div { min-width: 0; }

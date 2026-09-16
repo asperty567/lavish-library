@@ -261,7 +261,7 @@ export default function Home() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Lavish could not be opened.');
       const reviewUrl = typeof result.url === 'string' ? result.url : artifact.url;
-      if (reviewUrl && !isLoopbackHost(window.location.hostname)) {
+      if (reviewUrl) {
         window.location.assign(reviewUrl);
         return;
       }
@@ -521,12 +521,12 @@ export default function Home() {
                     <div className="card-preview">
                       <div className="preview-chrome"><i /><i /><i /><span>{artifact.title}</span></div>
                       <div className="preview-content"><span /><strong>{artifact.title}</strong><p>{artifact.description || 'A Lavish review surface'}</p><div><i /><i /><i /></div></div>
-                      <div className="card-actions"><button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button></div>
+                      <div className="card-actions">{artifact.exists && artifact.url ? <a href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></a> : <button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button>}</div>
                     </div>
                     <div className="card-body">
                       <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
                       <p className="description">{artifact.description || artifact.relativePath}</p>
-                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span><button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
+                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span>{artifact.exists && artifact.url ? <a className="open-link" href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'}</a> : null}<button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
                     </div>
                   </article>
                 );
