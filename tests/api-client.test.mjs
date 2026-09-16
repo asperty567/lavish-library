@@ -34,7 +34,7 @@ test('uses the Tailscale host for the companion API when the UI is not on localh
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.window = { location: { hostname: 'mac-studio.tail1c136e.ts.net', protocol: 'https:' } };
+  globalThis.window = { location: { hostname: 'mac-studio.tail1c136e.ts.net', protocol: 'https:', port: '3000', origin: 'https://mac-studio.tail1c136e.ts.net:3000' } };
   globalThis.fetch = async (url, init = {}) => {
     calls.push({ url: String(url), token: new Headers(init.headers).get('x-lavish-token') });
     if (String(url).endsWith('/api/session')) {
@@ -48,8 +48,8 @@ test('uses the Tailscale host for the companion API when the UI is not on localh
     const response = await apiFetch('/library');
     assert.equal(response.status, 200);
     assert.deepEqual(calls, [
-      { url: 'https://mac-studio.tail1c136e.ts.net:4318/api/session', token: null },
-      { url: 'https://mac-studio.tail1c136e.ts.net:4318/api/library', token: 'tailnet-token' },
+      { url: 'https://mac-studio.tail1c136e.ts.net:3000/api/session', token: null },
+      { url: 'https://mac-studio.tail1c136e.ts.net:3000/api/library', token: 'tailnet-token' },
     ]);
   } finally {
     globalThis.fetch = originalFetch;

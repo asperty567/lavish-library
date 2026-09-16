@@ -595,7 +595,10 @@ async function artifactById(id) {
 
 function fileOpenUrl(artifactId, origin) {
   const filePath = `/api/artifacts/file?id=${encodeURIComponent(artifactId)}`;
-  if (isPublicWebOrigin(origin) && publicHost) return `https://${publicHost}:${PORT}${filePath}`;
+  if (isPublicWebOrigin(origin) && publicOrigin) return `${publicOrigin}${filePath}`;
+  if (origin && /^https?:\/\//i.test(origin)) {
+    try { return new URL(filePath, origin).toString(); } catch { /* use the API origin */ }
+  }
   return `http://${HOST}:${PORT}${filePath}`;
 }
 
@@ -1021,8 +1024,19 @@ function chooseFolder(prompt) {
   });
 }
 
-const server = createServer(async (req, res) => {
+function resolvedOrigin(req) {
   const origin = String(req.headers.origin || '');
+  if (origin) return origin;
+  if (String(req.headers['sec-fetch-site'] || '') !== 'same-origin') return '';
+  const referer = String(req.headers.referer || '');
+  if (referer) {
+    try { return new URL(referer).origin; } catch { return ''; }
+  }
+  return publicOrigin || `http://127.0.0.1:${UI_PORT}`;
+}
+
+const server = createServer(async (req, res) => {
+  const origin = resolvedOrigin(req);
   if (!hostAllowed(String(req.headers.host || ''))) return json(res, 403, { error: 'Request host is not allowed.' });
   if (origin && !originAllowed(origin)) return json(res, 403, { error: 'Browser origin is not allowed.' });
   let url;
@@ -1032,7 +1046,8 @@ const server = createServer(async (req, res) => {
     return json(res, 400, { error: 'Request failed.' }, origin);
   }
   const isPublicFileGet = req.method === 'GET' && url.pathname === '/api/artifacts/file';
-  if (!origin && req.headers['sec-fetch-site'] && !isPublicFileGet) return json(res, 403, { error: 'Browser origin is required.' });
+  const sameOriginFetch = String(req.headers['sec-fetch-site'] || '') === 'same-origin';
+  if (!origin && req.headers['sec-fetch-site'] && !isPublicFileGet && !sameOriginFetch) return json(res, 403, { error: 'Browser origin is required.' });
   if (req.method === 'OPTIONS') {
     if (!origin) return json(res, 400, { error: 'Browser origin is required.' });
     res.writeHead(204, { 'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type,x-lavish-token', vary: 'origin' });

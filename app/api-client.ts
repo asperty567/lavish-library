@@ -1,8 +1,10 @@
 function apiOrigin() {
   if (typeof window === 'undefined') return 'http://127.0.0.1:4318';
-  const { hostname, protocol } = window.location;
-  if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1') return 'http://127.0.0.1:4318';
-  return `${protocol}//${hostname}:4318`;
+  const { hostname, origin, port, protocol } = window.location;
+  if (origin) return origin;
+  const hostPort = port ? `:${port}` : '';
+  if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1') return `http://${hostname}${hostPort || ':3000'}`;
+  return `${protocol}//${hostname}${hostPort}`;
 }
 
 let tokenPromise: Promise<string> | null = null;

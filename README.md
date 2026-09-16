@@ -86,7 +86,7 @@ tailscale serve --bg 3000 http://127.0.0.1:3007
 tailscale serve --bg 4318 http://127.0.0.1:4318
 ```
 
-Files dropped in `~/Desktop/from-mini/firstmate` show up as the **from-mini** project. Open on the tailnet serves the file at `/api/artifacts/file?id=…` instead of a Mac path. Override the folder with `LAVISH_TRACKER_DROP_DIR`, or set it empty to disable.
+Files dropped in `~/Desktop/from-mini/firstmate` show up as the **from-mini** project. Open on the tailnet stays on the UI origin and serves `/api/artifacts/file?id=…` instead of a Mac path or `:4318`. Override the folder with `LAVISH_TRACKER_DROP_DIR`, or set it empty to disable.
 
 ## Production-style local run
 

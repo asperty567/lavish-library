@@ -348,7 +348,7 @@ test('indexes Desktop drop files and opens them over HTTP for the tailnet', asyn
     assert.equal(screenshot?.title, 'Beautyline ShortDesc Ingredients');
     assert.equal(storyboard?.kind, 'drop');
     assert.match(storyboard?.title || '', /Relay partner flow phase 0/i);
-    assert.equal(screenshot.url, `https://${publicHost}:${servicePort}/api/artifacts/file?id=${screenshot.id}`);
+    assert.equal(screenshot.url, `${publicOrigin}/api/artifacts/file?id=${screenshot.id}`);
 
     const openResponse = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
       method: 'POST',
