@@ -470,7 +470,7 @@ export default function Home() {
 
         {section === 'library' && showAdd && (
           <section className="add-panel" aria-label="Add a project folder">
-            <div><strong>Add a project folder</strong><p>We’ll look inside its <code>.lavish</code> folders. Nothing is uploaded.</p></div>
+            <div><strong>Add a project folder</strong><p>We’ll look inside its <code>.lavish</code> folders. Nothing is uploaded. <strong>On phone:</strong> paste a full Mac path below — Choose folder only works on the Studio screen.</p></div>
             <button className="choose-button" onClick={() => void chooseFolder()}><Icon name="folder" /> Choose folder</button>
             <form onSubmit={addManualFolder}>
               <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder="Or paste /Users/you/project" required />

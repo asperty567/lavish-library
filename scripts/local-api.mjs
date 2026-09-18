@@ -1079,12 +1079,29 @@ async function addProject(folder) {
 
 function chooseFolder(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn('/usr/bin/osascript', ['-e', `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`]);
+    // Finder dialog only works on the Studio Mac GUI session — not from phone Safari.
+    const child = spawn('/usr/bin/osascript', ['-e', `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let output = '';
     let errorOutput = '';
+    const timer = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch {}
+      reject(new Error(
+        'Folder picker needs the Mac Studio screen (Finder dialog). On phone, paste the full folder path in Add folder instead — e.g. /Users/admin/Projects/my-app',
+      ));
+    }, 12_000);
     child.stdout.on('data', (chunk) => { output += chunk; });
     child.stderr.on('data', (chunk) => { errorOutput += chunk; });
-    child.on('close', (code) => code === 0 ? resolve(output.trim()) : reject(new Error(errorOutput.includes('User canceled') ? 'Folder selection cancelled.' : errorOutput.trim())));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) return resolve(output.trim());
+      const err = errorOutput.trim();
+      if (err.includes('User canceled') || err.includes('User cancelled')) {
+        return reject(new Error('Folder selection cancelled.'));
+      }
+      reject(new Error(err || 'Folder picker failed. On phone use the path field under Add folder.'));
+    });
   });
 }
 
