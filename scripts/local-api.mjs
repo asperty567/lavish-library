@@ -599,6 +599,23 @@ async function artifactById(id) {
   throw new Error('That file is not a known Lavish artifact.');
 }
 
+async function artifactFromOpenInput(input = {}) {
+  const file = typeof input.file === 'string' ? input.file.trim() : '';
+  const id = typeof input.id === 'string' ? input.id.trim() : '';
+  if (file) {
+    try {
+      return await artifactForFile(file);
+    } catch (error) {
+      if (!id) throw error;
+      const message = error instanceof Error ? error.message : '';
+      if (!/no longer exists/i.test(message)) throw error;
+    }
+  }
+  if (id) return artifactById(id);
+  if (file) throw new Error('That Lavish file no longer exists.');
+  throw new Error('That file is not a known Lavish artifact.');
+}
+
 function fileOpenUrl(artifactId, origin) {
   const filePath = `/api/artifacts/file?id=${encodeURIComponent(artifactId)}`;
   if (isPublicWebOrigin(origin) && publicOrigin) return `${publicOrigin}${filePath}`;
@@ -1195,7 +1212,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/open') {
       const input = await body(req);
-      const artifact = await artifactForFile(input.file);
+      const artifact = await artifactFromOpenInput(input);
       if (shouldOpenInBrowser(artifact)) {
         const urlForClient = fileOpenUrl(artifact.id, origin);
         await recordEvent('open', { artifactId: artifact.id, query: input.query, label: 'File opened' });

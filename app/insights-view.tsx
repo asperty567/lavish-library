@@ -152,7 +152,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
   async function openArtifact(candidate: FeedbackCandidate) {
     setNotice(`Opening “${candidate.title}”…`);
     const response = await apiFetch('/artifacts/open', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: candidate.file }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: candidate.id, file: candidate.file }),
     });
     const result = await response.json();
     setNotice(response.ok ? '' : result.error || 'Could not open that Lavish.');

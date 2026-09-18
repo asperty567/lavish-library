@@ -217,6 +217,16 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
     const opened = await openResponse.json();
     assert.equal(openResponse.status, 202);
     assert.equal(opened.url, `https://${publicHost}:4389/session/tailscale-demo`);
+
+    const openById = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+      method: 'POST',
+      headers: { origin: publicOrigin, 'content-type': 'application/json', 'x-lavish-token': session.token },
+      body: JSON.stringify({ id: library.artifacts[0].id }),
+    });
+    const openedById = await openById.json();
+    assert.equal(openById.status, 202, openedById.error);
+    assert.equal(openedById.url, `https://${publicHost}:4389/session/tailscale-demo`);
+    assert.doesNotMatch(openedById.error || '', /no longer exists/i);
   } finally {
     publicService.kill('SIGTERM');
   }
@@ -432,6 +442,15 @@ test('hides discovered drop copies when a live session has the same title', asyn
     assert.equal(packing[0].sessionStatus, 'open');
     assert.equal(packing[0].file, liveFile);
     assert.equal(packing[0].url, 'https://mac-studio.tail1c136e.ts.net:4389/session/acs-live');
+
+    const openById = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+      method: 'POST',
+      headers: { origin, 'content-type': 'application/json', 'x-lavish-token': session.token },
+      body: JSON.stringify({ id: packing[0].id }),
+    });
+    const opened = await openById.json();
+    assert.equal(openById.status, 202, opened.error);
+    assert.equal(opened.url, 'https://mac-studio.tail1c136e.ts.net:4389/session/acs-live');
   } finally {
     service.kill('SIGTERM');
   }

@@ -256,7 +256,7 @@ export default function Home() {
       const response = await apiFetch('/artifacts/open', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ file: artifact.file, reopen: artifact.sessionStatus === 'ended' && artifact.endedBy === 'user', query: query.trim() || null }),
+        body: JSON.stringify({ id: artifact.id, file: artifact.file, reopen: artifact.sessionStatus === 'ended' && artifact.endedBy === 'user', query: query.trim() || null }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Lavish could not be opened.');
