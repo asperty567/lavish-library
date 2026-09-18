@@ -260,13 +260,8 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Lavish could not be opened.');
-      const reviewUrl = typeof result.url === 'string' ? result.url : artifact.url;
-      if (reviewUrl) {
-        window.location.assign(reviewUrl);
-        return;
-      }
-      setNotice('');
-      window.setTimeout(() => void loadLibrary(true), 900);
+      if (typeof result.url !== 'string') throw new Error('Lavish returned no session URL.');
+      window.location.assign(result.url);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Lavish could not be opened.');
     }

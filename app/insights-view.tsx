@@ -155,7 +155,9 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: candidate.id, file: candidate.file }),
     });
     const result = await response.json();
-    setNotice(response.ok ? '' : result.error || 'Could not open that Lavish.');
+    if (!response.ok) return setNotice(result.error || 'Could not open that Lavish.');
+    if (typeof result.url !== 'string') return setNotice('Lavish returned no session URL.');
+    window.location.assign(result.url);
   }
 
   async function markReviewed() {

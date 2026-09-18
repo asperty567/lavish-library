@@ -51,7 +51,7 @@ before(async () => {
   await writeFile(lavishFile, '<!doctype html><html><head><title>Identity migration plan</title><meta name="description" content="Entra access architecture and delivery decisions"></head><body><h1>Identity migration</h1></body></html>');
   await writeFile(outsideFile, '<!doctype html><title>Not a Lavish</title>');
   await writeFile(undiscoveredLavishFile, '<!doctype html><title>Outside scanner depth</title>');
-  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: { demo: { file: lavishFile, status: 'open', updated_at: '2026-08-30T00:00:00.000Z', chat: [{ at: '2026-08-30T00:00:00.000Z' }] } } }));
+  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: { demo: { file: lavishFile, url: 'http://127.0.0.1:4387/session/legacy', status: 'open', updated_at: '2026-08-30T00:00:00.000Z', chat: [{ at: '2026-08-30T00:00:00.000Z' }] } } }));
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Signal Project' }], archiveRoot: null }));
   service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,
@@ -69,6 +69,19 @@ test('builds a local library with known session activity', async () => {
   assert.equal(library.artifacts.length, 1);
   assert.equal(library.artifacts[0].title, 'Identity migration plan');
   assert.equal(library.artifacts[0].sessionMessages, 1);
+  assert.equal(library.artifacts[0].url.startsWith('https://mac-studio.tail1c136e.ts.net:4389/session/'), true);
+  assert.equal(library.artifacts[0].url.includes('4387'), false);
+  assert.equal(library.server.url, 'https://mac-studio.tail1c136e.ts.net:4389');
+});
+
+test('opens by artifact id or file path with a canonical 4389 session URL', async () => {
+  const library = await (await fetch(`${api}/library`)).json();
+  const byFile = await post('/artifacts/open', { file: lavishFile });
+  const byId = await post('/artifacts/open', { id: library.artifacts[0].id, reopen: true });
+  for (const result of [byFile, byId]) {
+    assert.match(result.url, /^https:\/\/mac-studio\.tail1c136e\.ts\.net:4389\/session\/[a-f0-9]{16}$/);
+    assert.equal(result.url.includes('4387'), false);
+  }
 });
 
 test('records search, value, and outcome signals in insights', async () => {

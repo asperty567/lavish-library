@@ -352,3 +352,76 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
   .recommendation-list > article { grid-template-columns: 28px minmax(0, 1fr); }.recommendation-actions { grid-column: 2; }
   .feedback-list article { grid-template-columns: 1fr; }.feedback-list select { width: 100%; }
 }
+
+/* Lavish boards use a deep, warm dark canvas; keep the library in that house style. */
+:root {
+  --ink: #f2ece7;
+  --muted: #aaa09d;
+  --line: #393237;
+  --paper: #171519;
+  --wine: #b66071;
+  --wine-dark: #8f4054;
+}
+html, body { background: var(--paper); color: var(--ink); }
+.app-shell { background: #171519; }
+.sidebar { background: #211d22; border-color: #393239; }
+.brand span, .nav-label, .nav-item small, .sidebar-foot > p { color: #9d9294; }
+.nav-heading button:hover, .nav-item.active { background: #332831; }
+.nav-item { color: #c4babe; }
+.nav-item.active { color: #e39aaa; box-shadow: 0 1px 2px rgb(0 0 0 / 24%), 0 5px 20px rgb(0 0 0 / 15%); }
+.project-glyph { border-color: #51434b; color: #c99ca7; background: #332a32; }
+.server-card { border-color: #443942; background: rgb(45 37 45 / 80%); }
+.server-card span { color: #a99da3; }
+.topbar { border-color: var(--line); background: rgb(27 24 29 / 92%); }
+.search-box, .icon-button, .archive-button, .summary-pill, .view-switch, .artifact-card,
+.preview-content, .empty-state, .signal-ledger, .search-signals > div, .evolution-list article,
+.review-editorial, .recommendation-list > article, .dormant-list article, .template-list article,
+.feedback-list article, .history-summary, .version-content, .history-head > button,
+.history-summary button, .version-actions button, .insights-controls select, .insights-controls button { border-color: #453c43; background: #242026; color: var(--ink); }
+.search-box input, .view-tools select { color: #eee7e3; }
+.search-box input::placeholder { color: #887e83; }
+kbd, .view-switch { border-color: #453c43; color: #a99ea4; background: #302a31; }
+.archive-button { color: #c2b4b8; }
+.archive-button.enabled { border-color: #496957; color: #8fcea6; background: #25372d; }
+.add-panel { border-color: #47383f; background: #30232a; }
+.add-panel p, .title-row p, .description, .insights-hero > div:first-child > p, .rhythm-panel p, .section-head p,
+.insights-loading p, .insights-error p, .empty-state p, .history-head p, .version-content > p,
+.review-lede, .recommendation-list p, .dormant-list p, .template-list p, .empty-module p { color: #aaa0a3; }
+.add-panel form input { border-color: #55424a; color: var(--ink); background: #211c22; }
+.archive-panel { border-color: #34463b; background: #202d26; }
+.archive-panel-copy p, .archive-stats span { color: #99aba0; }
+.archive-panel-actions button, .archive-choose { border-color: #4c6958; color: #b4ddc0; background: #283a30; }
+.archive-choose { color: #fff; background: #557c65; }
+.toolbar, .insights-section { border-color: var(--line); }
+.filter-pills button, .view-tools label, .section-kicker, .insights-eyebrow, .insights-controls label,
+.card-meta, .status, .history-kicker, .review-date, .review-status, .ledger-grid small, .ledger-grid span,
+.version-title span, .history-foot, .feedback-list label { color: #a69ba0; }
+.filter-pills button.selected, .event-filter button.active { color: #e39aaa; background: #3a2831; }
+.view-switch button { color: #a69ba0; background: transparent; }
+.view-switch button.active { color: #f0b0bc; background: #49313c; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); }
+.notice, .insights-notice { border-color: #65474b; color: #ddb0a8; background: #38282d; }
+.artifact-card { box-shadow: 0 2px 3px rgb(0 0 0 / 20%), 0 11px 30px rgb(0 0 0 / 20%); }
+.card-preview { background: #5e3c44; }
+.artifact-card:nth-child(6n+2) .card-preview { background: #385348; }
+.artifact-card:nth-child(6n+3) .card-preview { background: #4b405b; }
+.artifact-card:nth-child(6n+4) .card-preview { background: #3b4e5c; }
+.artifact-card:nth-child(6n+5) .card-preview { background: #5a4d34; }
+.artifact-card:nth-child(6n+6) .card-preview { background: #593942; }
+.preview-chrome { background: #171318; }
+.preview-content { background: #30282f; box-shadow: 0 8px 22px rgb(0 0 0 / 35%); }
+.preview-content p { color: #a89ca2; }
+.preview-content div i { background: #4b414a; }.preview-content div i:first-child { background: #64434b; }
+.card-actions { background: rgb(15 10 15 / 0%); }.artifact-card:hover .card-actions, .artifact-card:focus-within .card-actions { background: rgb(15 10 15 / 65%); }
+.card-heading > button { color: #aa9da4; }
+.card-meta { border-color: #3d353c; }.history-chip { border-color: #4c4148; color: #b0a3a9; background: #2d272e; }.history-chip.protected { border-color: #456952; color: #9ac9a9; background: #26392e; }
+.skeleton { border-color: #3e363e; background: linear-gradient(105deg, #28232a 25%, #383039 40%, #28232a 55%); }
+.empty-state { border-color: #51444d; }.empty-state > div { color: #efacb8; background: #422d37; }
+.nav-insight-glyph { background: var(--wine); }.nav-review-glyph { border-color: #72545c; color: #deb3a0; background: #3f302d; }
+.rhythm-panel { border-color: #3a5845; background: #202d26; }.rhythm-options label { border-color: #3c5646; background: rgb(42 61 49 / 70%); }.rhythm-options small { color: #a6b6ab; }
+.signal-ledger { box-shadow: 0 12px 36px rgb(0 0 0 / 25%); }.ledger-heading, .signal-sources { border-color: #393339; }.signal-sources { background: #211d23; }.signal-sources span { color: #9bd0ab; background: #294235; }.signal-sources .excluded { color: #d0a4b0; background: #3d2931; }
+.topic-cloud { border-color: #493f47; background: radial-gradient(circle at 50% 46%, #38303a 0, #211d23 70%); }.topic-cloud button { border-color: #51464f; color: #c0b5ba; background: #2a242c; }.topic-cloud button:hover, .topic-cloud button.selected { border-color: var(--wine); color: #f0b0bc; background: #422b35; }
+.topic-evidence { background: #542b39; box-shadow: 0 13px 30px rgb(0 0 0 / 30%); }
+.purpose-bars i { background: #3b343b; }.search-signals em { color: #e0aa97; background: #4a302b; }.empty-module { border-color: #4e444c; background: #242026; }
+.evolution-list article { border-color: #443b43; }.event-glyph { color: #d09da9; background: #3e2d37; }.event-version { color: #9ed0ab; background: #2d4435; }.event-git { color: #a9c2d1; background: #2d3c47; }.event-session { color: #d2b184; background: #443a2d; }
+.review-editorial { box-shadow: 0 16px 45px rgb(0 0 0 / 25%); }.review-status button, .recommendation-actions button, .dormant-list button, .feedback-list select, .value-buttons button { border-color: #4a4148; color: #cbbdc2; background: #2d272e; }.recommendation-list > article { border-color: #453c43; }.recommendation-actions button:first-child { border-color: #4c705a; color: #a9d2b3; background: #293d31; }
+.history-overlay { background: rgb(5 3 7 / 68%); }.history-drawer { border-color: #443a42; background: #1d1a20; box-shadow: -24px 0 70px rgb(0 0 0 / 45%); }.history-head, .history-foot { border-color: #3d353d; background: #28222a; }.history-summary { border-color: #3d353d; }.timeline-mark::after { background: #4a4149; }.timeline-mark i { border-color: #766a72; background: #1d1a20; }.version-content { border-color: #443c43; }.version-row.current .version-content { border-color: #41624d; background: #25352b; }.version-row.current .timeline-mark i { border-color: #6bb184; background: #6bb184; box-shadow: 0 0 0 4px #294333; }.version-deltas span { color: #b4a9ad; background: #342e35; }

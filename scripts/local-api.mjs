@@ -12,6 +12,7 @@ const UI_PORT = Number.isInteger(requestedUiPort) && requestedUiPort > 0 && requ
   ? requestedUiPort
   : 3000;
 const HOST = '127.0.0.1';
+const PUBLIC_SESSION_ORIGIN = 'https://mac-studio.tail1c136e.ts.net:4389';
 const STATE_FILE = process.env.LAVISH_AXI_STATE_DIR
   ? path.join(process.env.LAVISH_AXI_STATE_DIR, 'state.json')
   : path.join(os.homedir(), '.lavish-axi', 'state.json');
@@ -31,6 +32,20 @@ let knownArtifactsCache = { key: '', at: 0, value: null, pending: null };
 
 const idFor = (value) => createHash('sha1').update(value).digest('hex').slice(0, 12);
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const sessionKeyFor = (file) => sha256(path.resolve(file)).slice(0, 16);
+
+function sessionUrlForFile(file) {
+  return `${PUBLIC_SESSION_ORIGIN}/session/${sessionKeyFor(file)}`;
+}
+
+function rewriteSessionUrl(value, file) {
+  try {
+    const pathname = new URL(String(value || '')).pathname;
+    const match = pathname.match(/^\/session\/([^/]+)$/);
+    if (match && match[1] !== 'legacy') return `${PUBLIC_SESSION_ORIGIN}/session/${match[1]}`;
+  } catch { /* Use the deterministic session URL when state contains a malformed or local URL. */ }
+  return sessionUrlForFile(file);
+}
 const exists = async (value) => access(value, constants.F_OK).then(() => true).catch(() => false);
 const slug = (value) => String(value || 'untitled').normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 70) || 'untitled';
 const ALLOWED_WEB_ORIGINS = new Set([
@@ -500,7 +515,7 @@ async function buildLibrary() {
       relativePath: project === looseProject ? file : path.relative(project.path, file),
       modifiedAt: fileStat?.mtime?.toISOString() || null, lastUsedAt, size: fileStat?.size || 0, exists: fileExists,
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),
-      url: session?.url || null, endedBy: session?.ended_by || null,
+      url: session?.url ? rewriteSessionUrl(session.url, file) : null, endedBy: session?.ended_by || null,
       sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
       kind: isDropFile(file) ? 'drop' : 'lavish',
       versionCount: 0, lastBackedUpAt: null, backupError: null,
@@ -538,7 +553,7 @@ async function buildLibrary() {
   return {
     projects,
     artifacts,
-    server: { running, url: 'http://127.0.0.1:4387' },
+    server: { running, url: PUBLIC_SESSION_ORIGIN },
     archive: {
       enabled: Boolean(config.archiveRoot),
       root: config.archiveRoot,
@@ -582,7 +597,7 @@ async function artifactForFile(file) {
     relativePath: project ? path.relative(project.path, resolved) : resolved,
     sessionStatus: session?.status || 'discovered',
     pendingPrompts: Number(session?.pending_prompts || 0),
-    url: session?.url || null,
+    url: session?.url ? rewriteSessionUrl(session.url, resolved) : null,
     endedBy: session?.ended_by || null,
     sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
     kind: isDropFile(resolved) ? 'drop' : 'lavish',
@@ -1221,11 +1236,11 @@ const server = createServer(async (req, res) => {
       const args = [artifact.file];
       if (input.reopen) args.push('--reopen');
       spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
-      const sessionUrl = artifact.url || await waitForSessionUrl(artifact.file);
+      const sessionUrl = artifact.url || await waitForSessionUrl(artifact.file) || sessionUrlForFile(artifact.file);
       const urlForClient = reviewUrlForClient(sessionUrl, origin);
-      if (isPublicWebOrigin(origin) && !urlForClient) throw new Error('Lavish opened on the Mac, but no review URL was available on the tailnet.');
+      if (!urlForClient) throw new Error('Lavish opened on the Mac, but no review URL was available.');
       await recordEvent('open', { artifactId: artifact.id, query: input.query, label: input.reopen ? 'Lavish reopened' : 'Lavish opened' });
-      return json(res, 202, { ok: true, url: urlForClient }, origin);
+      return json(res, 202, { ok: true, id: artifact.id, url: urlForClient }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/reveal') {
       const input = await body(req);
