@@ -604,9 +604,20 @@ async function artifactForFile(file) {
   };
 }
 
+function looksLikeArtifactId(value) {
+  return /^[a-f0-9]{12}$/i.test(String(value || '').trim());
+}
+
+function openIdFromInput(input = {}) {
+  for (const value of [input.id, input.artifactId, input.file]) {
+    if (typeof value === 'string' && looksLikeArtifactId(value)) return value.trim().toLowerCase();
+  }
+  return '';
+}
+
 async function artifactById(id) {
-  const artifactId = String(id || '');
-  if (!/^[a-f0-9]{12}$/i.test(artifactId)) throw new Error('That file is not a known Lavish artifact.');
+  const artifactId = String(id || '').trim().toLowerCase();
+  if (!looksLikeArtifactId(artifactId)) throw new Error('That file is not a known Lavish artifact.');
   const { artifactPaths } = await knownProjectMap();
   for (const file of artifactPaths) {
     if (idFor(file) === artifactId) return artifactForFile(file);
@@ -616,8 +627,9 @@ async function artifactById(id) {
 
 async function artifactFromOpenInput(input = {}) {
   const file = typeof input.file === 'string' ? input.file.trim() : '';
-  const id = typeof input.id === 'string' ? input.id.trim() : '';
-  if (file) {
+  const id = openIdFromInput(input);
+  const fileIsPath = Boolean(file) && !looksLikeArtifactId(file);
+  if (fileIsPath) {
     try {
       return await artifactForFile(file);
     } catch (error) {
@@ -996,15 +1008,23 @@ function isPublicWebOrigin(origin) {
 
 function reviewUrlForClient(url, origin) {
   if (!url) return null;
-  if (!isPublicWebOrigin(origin) || !publicHost) return url;
   try {
     const parsed = new URL(url);
+    const sessionId = parsed.pathname.match(/^\/session\/([^/]+)$/)?.[1];
+    const sessionPortValue = String(Number.isInteger(sessionPort) && sessionPort > 0 ? sessionPort : 4389);
+    const isSessionLink = Boolean(sessionId) || parsed.port === '4387' || parsed.port === '4389' || parsed.port === sessionPortValue;
+    if (isSessionLink) {
+      if (sessionId && sessionId !== 'legacy') return `${PUBLIC_SESSION_ORIGIN}/session/${sessionId}`;
+      parsed.protocol = 'https:';
+      parsed.hostname = publicHost || 'mac-studio.tail1c136e.ts.net';
+      parsed.port = sessionPortValue;
+      const rewritten = parsed.toString();
+      return parsed.pathname === '/' && !String(url).endsWith('/') ? rewritten.replace(/\/$/, '') : rewritten;
+    }
+    if (!isPublicWebOrigin(origin) || !publicHost) return url;
     if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '::1' || parsed.hostname === publicHost) {
       parsed.protocol = 'https:';
       parsed.hostname = publicHost;
-    }
-    if (parsed.port === '4387' || parsed.port === String(sessionPort) || parsed.pathname.startsWith('/session/')) {
-      parsed.port = String(Number.isInteger(sessionPort) && sessionPort > 0 ? sessionPort : 4389);
     }
     const rewritten = parsed.toString();
     return parsed.pathname === '/' && !String(url).endsWith('/') ? rewritten.replace(/\/$/, '') : rewritten;
@@ -1254,7 +1274,10 @@ const server = createServer(async (req, res) => {
       if (input.reopen) args.push('--reopen');
       spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
       const sessionUrl = artifact.url || await waitForSessionUrl(artifact.file) || sessionUrlForFile(artifact.file);
-      const urlForClient = reviewUrlForClient(sessionUrl, origin);
+      let urlForClient = reviewUrlForClient(sessionUrl, origin) || rewriteSessionUrl(sessionUrl, artifact.file);
+      if (!urlForClient || urlForClient.includes(':4387') || /^http:\/\/mac-studio(\.|:|\/|$)/i.test(urlForClient)) {
+        urlForClient = rewriteSessionUrl(sessionUrl, artifact.file);
+      }
       if (!urlForClient) throw new Error('Lavish opened on the Mac, but no review URL was available.');
       await recordEvent('open', { artifactId: artifact.id, query: input.query, label: input.reopen ? 'Lavish reopened' : 'Lavish opened' });
       return json(res, 202, { ok: true, id: artifact.id, url: urlForClient }, origin);

@@ -76,11 +76,15 @@ test('builds a local library with known session activity', async () => {
 
 test('opens by artifact id or file path with a canonical 4389 session URL', async () => {
   const library = await (await fetch(`${api}/library`)).json();
+  const artifactId = library.artifacts[0].id;
   const byFile = await post('/artifacts/open', { file: lavishFile });
-  const byId = await post('/artifacts/open', { id: library.artifacts[0].id, reopen: true });
-  for (const result of [byFile, byId]) {
+  const byId = await post('/artifacts/open', { id: artifactId, reopen: true });
+  const byFileFieldId = await post('/artifacts/open', { file: artifactId });
+  for (const result of [byFile, byId, byFileFieldId]) {
     assert.match(result.url, /^https:\/\/mac-studio\.tail1c136e\.ts\.net:4389\/session\/[a-f0-9]{16}$/);
     assert.equal(result.url.includes('4387'), false);
+    assert.doesNotMatch(result.url, /^http:\/\/mac-studio/i);
+    assert.doesNotMatch(result.error || '', /no longer exists/i);
   }
 });
 
@@ -240,6 +244,18 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
     assert.equal(openById.status, 202, openedById.error);
     assert.equal(openedById.url, `https://${publicHost}:4389/session/tailscale-demo`);
     assert.doesNotMatch(openedById.error || '', /no longer exists/i);
+    assert.equal(openedById.url.includes('4387'), false);
+
+    const openByFileId = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+      method: 'POST',
+      headers: { origin: publicOrigin, 'content-type': 'application/json', 'x-lavish-token': session.token },
+      body: JSON.stringify({ file: library.artifacts[0].id }),
+    });
+    const openedByFileId = await openByFileId.json();
+    assert.equal(openByFileId.status, 202, openedByFileId.error);
+    assert.equal(openedByFileId.url, `https://${publicHost}:4389/session/tailscale-demo`);
+    assert.doesNotMatch(openedByFileId.error || '', /no longer exists/i);
+    assert.equal(openedByFileId.url.includes('4387'), false);
   } finally {
     publicService.kill('SIGTERM');
   }
