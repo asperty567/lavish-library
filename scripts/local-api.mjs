@@ -93,6 +93,23 @@ function fallbackTitleFor(file) {
   return path.basename(file).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const PHOTO_LABEL_WORD = /^(?:packshots?|photos?|images?|imgs?|samples?|cutouts?|stand-?ins?|pdps?|web|row|eur|uk|us|jpg|jpeg|png|gif|webp|cr\d+|\d+)$/i;
+
+function isMedik8PackshotDrop(file) {
+  const parts = path.resolve(String(file || '')).split(path.sep);
+  return parts.some((part, index) => part === 'packshots' && parts[index - 1] === 'beautyline-SC-135269');
+}
+
+function isMedik8ProductCodePhotoTitle(title) {
+  const parts = String(title || '').trim().split(/[\s.]+/).map((part) => part.replace(/[^a-z0-9-]/gi, '')).filter(Boolean);
+  if (!parts.length || !/^P\d{4,6}$/i.test(parts[0])) return false;
+  return parts.slice(1).every((part) => PHOTO_LABEL_WORD.test(part));
+}
+
+function excludedFromCatalog(file, title) {
+  return isMedik8PackshotDrop(file) || isMedik8ProductCodePhotoTitle(title);
+}
+
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
 }
@@ -232,8 +249,10 @@ async function shareableFiles(root, depth = 0) {
     const full = path.join(root, entry.name);
     if (entry.isDirectory()) {
       if (['node_modules', 'dist', 'build', 'vendor'].includes(entry.name)) continue;
+      if (entry.name === 'packshots' && path.basename(root) === 'beautyline-SC-135269') continue;
       files.push(...await shareableFiles(full, depth + 1));
     } else if (entry.isFile() && DROP_FILE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      if (isMedik8PackshotDrop(full)) continue;
       files.push(full);
     }
   }
@@ -507,11 +526,13 @@ async function buildLibrary() {
     const fileStat = fileExists ? await stat(file) : null;
     const metadata = fileExists ? await artifactMetadata(file) : { title: '', description: '' };
     const fallbackTitle = fallbackTitleFor(file);
+    const title = metadata.title || fallbackTitle;
+    if (excludedFromCatalog(file, title)) continue;
     const chatDates = Array.isArray(session?.chat) ? session.chat.map((item) => item.at).filter(Boolean) : [];
     const lastUsedAt = [session?.updated_at, ...chatDates].filter(Boolean).sort().at(-1) || null;
     artifacts.push({
       id: idFor(file), projectId: project.id, projectName: project.name,
-      title: metadata.title || fallbackTitle, description: metadata.description, file,
+      title, description: metadata.description, file,
       relativePath: project === looseProject ? file : path.relative(project.path, file),
       modifiedAt: fileStat?.mtime?.toISOString() || null, lastUsedAt, size: fileStat?.size || 0, exists: fileExists,
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),

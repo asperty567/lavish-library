@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readdir, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
 import os from 'node:os';
@@ -480,6 +480,73 @@ test('hides discovered drop copies when a live session has the same title', asyn
     const opened = await openById.json();
     assert.equal(openById.status, 202, opened.error);
     assert.equal(opened.url, 'https://mac-studio.tail1c136e.ts.net:4389/session/acs-live');
+  } finally {
+    service.kill('SIGTERM');
+  }
+});
+
+test('excludes Medik8 packshot drops and product-code photo titles from the catalog', async () => {
+  const fixture = await mkdtemp(path.join(os.tmpdir(), 'lavish-tracker-packshots-'));
+  const dropDir = path.join(fixture, 'from-mini', 'firstmate');
+  const packshots = path.join(dropDir, 'beautyline-SC-135269', 'packshots');
+  const configDir = path.join(fixture, 'tracker-state');
+  const stateDir = path.join(fixture, 'lavish-state');
+  const reviewFile = path.join(dropDir, 'beautyline-SC-135269', 'workbook-review.html');
+  const namedReview = path.join(dropDir, 'P10549-launch-review.html');
+  const codeOnly = path.join(dropDir, 'P10549.jpg');
+  const labeled = path.join(dropDir, 'P08843_packshot.jpg');
+  const productNamed = path.join(packshots, 'P10549_deluxe-sample-crystal-retinal-3.jpg');
+  const packshotNamed = path.join(packshots, 'P10549_packshot.jpg');
+  const tmpNamed = path.join(packshots, '_tmp_P10549.jpg');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const servicePort = port + 5;
+  const origin = 'https://mac-studio.tail1c136e.ts.net:3000';
+  await Promise.all([mkdir(packshots, { recursive: true }), mkdir(configDir, { recursive: true }), mkdir(stateDir, { recursive: true })]);
+  await Promise.all([
+    writeFile(productNamed, png),
+    writeFile(packshotNamed, png),
+    writeFile(tmpNamed, png),
+    writeFile(codeOnly, png),
+    writeFile(labeled, png),
+    writeFile(reviewFile, '<!doctype html><title>Beautyline workbook review</title>'),
+    writeFile(namedReview, '<!doctype html><title>P10549 launch review</title>'),
+    writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: dropDir, name: 'firstmate' }], archiveRoot: null })),
+    writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: {} })),
+  ]);
+
+  const service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      LAVISH_TRACKER_API_PORT: String(servicePort),
+      LAVISH_TRACKER_PUBLIC_HOST: 'mac-studio.tail1c136e.ts.net',
+      LAVISH_TRACKER_PUBLIC_ORIGIN: origin,
+      LAVISH_TRACKER_CONFIG_DIR: configDir,
+      LAVISH_AXI_STATE_DIR: stateDir,
+      LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_TRACKER_DROP_DIR: dropDir,
+    },
+    stdio: 'ignore',
+  });
+
+  try {
+    await waitForService(servicePort);
+    const headers = { origin, 'x-lavish-token': (await (await fetch(`http://127.0.0.1:${servicePort}/api/session`, { headers: { origin } })).json()).token };
+    const listed = async () => (await (await fetch(`http://127.0.0.1:${servicePort}/api/library`, { headers })).json()).artifacts;
+    const first = await listed();
+    const again = await listed();
+    const titles = new Set(again.map((artifact) => artifact.title));
+    assert.equal(again.some((artifact) => artifact.file.startsWith(`${packshots}${path.sep}`)), false);
+    assert.equal(titles.has('P10549 Deluxe Sample Crystal Retinal 3'), false);
+    assert.equal(titles.has('P10549 Packshot'), false);
+    assert.equal(titles.has('P10549'), false);
+    assert.equal(titles.has('P08843 Packshot'), false);
+    assert.equal(titles.has('Tmp P10549'), false);
+    assert.equal(titles.has('Beautyline workbook review'), true);
+    assert.equal(titles.has('P10549 launch review'), true);
+    assert.equal(first.length, again.length);
+    assert.equal(await access(productNamed).then(() => true, () => false), true);
+    assert.equal(await access(packshotNamed).then(() => true, () => false), true);
   } finally {
     service.kill('SIGTERM');
   }
