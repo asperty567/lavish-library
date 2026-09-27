@@ -19,3 +19,10 @@ function close(code = 0) {
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => close());
 api.on('exit', (code) => { if (!closing) close(code || 1); });
 site.on('exit', (code) => { if (!closing) close(code || 0); });
+
+function launchFailed(error) {
+  console.error(`Could not launch the local app: ${error.message}`);
+  close(1);
+}
+api.on('error', launchFailed);
+site.on('error', launchFailed);

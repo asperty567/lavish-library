@@ -50,7 +50,7 @@ before(async () => {
   await writeFile(lavishFile, '<!doctype html><html><head><title>Identity migration plan</title><meta name="description" content="Entra access architecture and delivery decisions"></head><body><h1>Identity migration</h1></body></html>');
   await writeFile(outsideFile, '<!doctype html><title>Not a Lavish</title>');
   await writeFile(undiscoveredLavishFile, '<!doctype html><title>Outside scanner depth</title>');
-  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: { demo: { file: lavishFile, status: 'open', updated_at: '2026-08-30T00:00:00.000Z', chat: [{ at: '2026-08-30T00:00:00.000Z' }] } } }));
+  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: { demo: { file: lavishFile, status: 'open', updated_at: '2026-08-30T00:00:00.000Z', chat: [{ role: 'agent', at: '2026-08-30T00:00:00.000Z' }] } } }));
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Signal Project' }], archiveRoot: null }));
   service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,

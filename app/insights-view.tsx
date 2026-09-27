@@ -97,7 +97,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     return insights.evolution.filter((event) => eventType === 'all' || event.type === eventType);
   }, [eventType, insights]);
 
-  async function saveFeedback(candidate: FeedbackCandidate, value: string, outcome = 'none') {
+  async function saveFeedback(candidate: FeedbackCandidate, value: string, outcome?: string) {
     setNotice(`Saving feedback for “${candidate.title}”…`);
     try {
       const response = await apiFetch('/artifacts/feedback', {
@@ -254,7 +254,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
 
         <section className="insights-section feedback-section">
           <div className="section-head"><div><span className="section-kicker">TEACH THE SYSTEM</span><h2>What counted as valuable?</h2><p>Small corrections after real use are stronger than an invented engagement score.</p></div></div>
-          <div className="feedback-list">{insights.feedbackQueue.map((item) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.projectName} · {when(item.lastActivityAt)}</span></div><div className="value-buttons"><button onClick={() => void saveFeedback(item, 'useful')}>Useful</button><button onClick={() => void saveFeedback(item, 'unfinished')}>Unfinished</button><button onClick={() => void saveFeedback(item, 'disposable')}>Disposable</button></div><label>Outcome<select defaultValue="none" onChange={(event) => { if (event.target.value !== 'none') void saveOutcome(item, event.target.value); }}><option value="none">Not labelled</option><option value="decided">Informed a decision</option><option value="shipped">Shipped</option><option value="shared">Shared</option><option value="reused">Reused elsewhere</option><option value="abandoned">Abandoned</option></select></label></article>)}</div>
+          <div className="feedback-list">{insights.feedbackQueue.map((item) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.projectName} · {when(item.lastActivityAt)}</span></div><div className="value-buttons"><button onClick={() => void saveFeedback(item, 'useful')}>Useful</button><button onClick={() => void saveFeedback(item, 'unfinished')}>Unfinished</button><button onClick={() => void saveFeedback(item, 'disposable')}>Disposable</button></div><label>Outcome<select defaultValue="none" onChange={(event) => { void saveOutcome(item, event.target.value); }}><option value="none">Not labelled</option><option value="decided">Informed a decision</option><option value="shipped">Shipped</option><option value="shared">Shared</option><option value="reused">Reused elsewhere</option><option value="abandoned">Abandoned</option></select></label></article>)}</div>
         </section>
       </>}
     </div>

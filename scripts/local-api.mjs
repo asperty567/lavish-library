@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { constants, watch } from 'node:fs';
-import { access, copyFile, cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +21,11 @@ const CONFIG_DIR = process.env.LAVISH_TRACKER_CONFIG_DIR
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const ANALYTICS_FILE = path.join(CONFIG_DIR, 'analytics.json');
 const LAVISH_BIN = process.env.LAVISH_AXI_BIN || '/opt/homebrew/bin/lavish-axi';
+const requestedLavishPort = Number(process.env.LAVISH_AXI_PORT || 4387);
+const LAVISH_PORT = Number.isInteger(requestedLavishPort) && requestedLavishPort > 0 && requestedLavishPort <= 65_535
+  ? requestedLavishPort
+  : 4387;
+const LAVISH_ORIGIN = `http://127.0.0.1:${LAVISH_PORT}`;
 const ARCHIVE_NAME = 'Lavish Library Archive';
 const API_TOKEN = randomBytes(32).toString('base64url');
 const artifactWatchers = new Map();
@@ -162,7 +167,7 @@ async function htmlFiles(root, depth = 0) {
   for (const entry of entries) {
     const full = path.join(root, entry.name);
     if (entry.isDirectory() && !['assets', 'node_modules'].includes(entry.name)) files.push(...await htmlFiles(full, depth + 1));
-    if (entry.isFile() && /\.html?$/i.test(entry.name) && !/-portable\.html$/i.test(entry.name)) files.push(full);
+    if (entry.isFile() && /\.html?$/i.test(entry.name) && !/(?:-portable|\.export)\.html$/i.test(entry.name)) files.push(full);
   }
   return files;
 }
@@ -241,11 +246,26 @@ async function scanKnownArtifacts(options = {}) {
   }
 }
 
+async function stateIdentity() {
+  const directory = path.dirname(path.resolve(STATE_FILE));
+  const canonicalDirectory = await realpath(directory).catch((error) => {
+    if (error.code === 'ENOENT') return directory;
+    throw error;
+  });
+  return sha256(path.join(canonicalDirectory, path.basename(STATE_FILE))).slice(0, 16);
+}
+
+function sessionReplies(session) {
+  // Both reviewer notes and agent replies are retained in Lavish chat.
+  return Array.isArray(session?.chat) ? session.chat.filter((entry) => entry?.role === 'agent').length : 0;
+}
+
 async function serverRunning() {
   try {
-    const response = await fetch('http://127.0.0.1:4387/health', { signal: AbortSignal.timeout(650) });
+    const response = await fetch(`${LAVISH_ORIGIN}/health`, { signal: AbortSignal.timeout(650) });
     const value = await response.json();
-    return response.ok && value.app === 'lavish-axi';
+    return response.ok && value.app === 'lavish-axi'
+      && (typeof value.state_id !== 'string' || value.state_id === await stateIdentity());
   } catch { return false; }
 }
 
@@ -425,7 +445,7 @@ async function buildLibrary() {
       modifiedAt: fileStat?.mtime?.toISOString() || null, lastUsedAt, size: fileStat?.size || 0, exists: fileExists,
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),
       url: session?.url || null, endedBy: session?.ended_by || null,
-      sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
+      sessionMessages: sessionReplies(session),
       versionCount: 0, lastBackedUpAt: null, backupError: null,
     });
   }
@@ -456,7 +476,7 @@ async function buildLibrary() {
   return {
     projects,
     artifacts,
-    server: { running, url: 'http://127.0.0.1:4387' },
+    server: { running, url: LAVISH_ORIGIN },
     archive: {
       enabled: Boolean(config.archiveRoot),
       root: config.archiveRoot,
@@ -503,7 +523,7 @@ async function artifactForFile(file) {
     pendingPrompts: Number(session?.pending_prompts || 0),
     url: session?.url || null,
     endedBy: session?.ended_by || null,
-    sessionMessages: Array.isArray(session?.chat) ? session.chat.length : 0,
+    sessionMessages: sessionReplies(session),
   };
 }
 
@@ -852,6 +872,14 @@ async function addProject(folder) {
   return resolved;
 }
 
+function launchDetached(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+    child.once('error', reject);
+    child.once('spawn', () => { child.unref(); resolve(); });
+  });
+}
+
 function chooseFolder(prompt) {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/osascript', ['-e', `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`]);
@@ -859,6 +887,7 @@ function chooseFolder(prompt) {
     let errorOutput = '';
     child.stdout.on('data', (chunk) => { output += chunk; });
     child.stderr.on('data', (chunk) => { errorOutput += chunk; });
+    child.once('error', reject);
     child.on('close', (code) => code === 0 ? resolve(output.trim()) : reject(new Error(errorOutput.includes('User canceled') ? 'Folder selection cancelled.' : errorOutput.trim())));
   });
 }
@@ -905,7 +934,7 @@ const server = createServer(async (req, res) => {
       const note = cleanEventValue(input.note, 800) || null;
       const feedback = await updateAnalytics((analytics) => {
         const previous = analytics.feedback[artifact.id] || {};
-        analytics.feedback[artifact.id] = { ...previous, artifactId: artifact.id, file: artifact.file, value: value ?? previous.value ?? null, outcome: outcome ?? previous.outcome ?? null, note: note ?? previous.note ?? null, updatedAt: new Date().toISOString() };
+        analytics.feedback[artifact.id] = { ...previous, artifactId: artifact.id, file: artifact.file, value: value ?? previous.value ?? null, outcome: outcomes.has(input.outcome) ? outcome : previous.outcome ?? null, note: typeof input.note === 'string' ? note : previous.note ?? null, updatedAt: new Date().toISOString() };
         return analytics.feedback[artifact.id];
       });
       await recordEvent('feedback', { artifactId: artifact.id, label: [value, outcome].filter(Boolean).join(' · ') || 'Feedback updated', detail: note || '' });
@@ -963,7 +992,7 @@ const server = createServer(async (req, res) => {
       const config = await readConfig();
       const folder = archiveHome(config);
       if (!folder || !(await exists(folder))) throw new Error('No archive folder has been created yet.');
-      spawn('/usr/bin/open', [folder], { detached: true, stdio: 'ignore' }).unref();
+      await launchDetached('/usr/bin/open', [folder]);
       return json(res, 202, { ok: true }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/snapshot') {
@@ -980,21 +1009,21 @@ const server = createServer(async (req, res) => {
       const artifact = await artifactForFile(input.file);
       const args = [artifact.file];
       if (input.reopen) args.push('--reopen');
-      spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
+      await launchDetached(LAVISH_BIN, args);
       await recordEvent('open', { artifactId: artifact.id, query: input.query, label: input.reopen ? 'Lavish reopened' : 'Lavish opened' });
       return json(res, 202, { ok: true }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/reveal') {
       const input = await body(req);
       const artifact = await artifactForFile(input.file);
-      spawn('/usr/bin/open', ['-R', artifact.file], { detached: true, stdio: 'ignore' }).unref();
+      await launchDetached('/usr/bin/open', ['-R', artifact.file]);
       await recordEvent('reveal', { artifactId: artifact.id, label: 'Revealed in Finder' });
       return json(res, 202, { ok: true }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/versions/open') {
       const input = await body(req);
       const resolved = await resolveVersion(input.file, input.versionId);
-      spawn('/usr/bin/open', [resolved.archivedFile], { detached: true, stdio: 'ignore' }).unref();
+      await launchDetached('/usr/bin/open', [resolved.archivedFile]);
       await recordEvent('version_open', { artifactId: resolved.artifact.id, label: 'Archived version opened', detail: resolved.version.createdAt });
       return json(res, 202, { ok: true }, origin);
     }
