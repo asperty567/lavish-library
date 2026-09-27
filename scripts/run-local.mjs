@@ -11,6 +11,7 @@ let closing = false;
 function close(code = 0) {
   if (closing) return;
   closing = true;
+  process.exitCode = code;
   api.kill('SIGTERM');
   site.kill('SIGTERM');
   setTimeout(() => process.exit(code), 100).unref();

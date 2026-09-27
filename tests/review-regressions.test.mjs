@@ -123,3 +123,23 @@ test('does not discover generated exports unless they are explicitly in session 
     assert.equal(library.artifacts.length, 2);
   });
 });
+
+test('a missing site launcher exits nonzero and terminates the companion API', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'lavish-launch-'));
+  await mkdir(path.join(directory, 'scripts'));
+  await writeFile(path.join(directory, 'scripts', 'local-api.mjs'), 'setInterval(() => {}, 1000);');
+  const launcher = spawn(process.execPath, [path.resolve('scripts/run-local.mjs'), 'dev'], { cwd: directory, stdio: ['ignore', 'ignore', 'pipe'] });
+  try {
+    let stderr = '';
+    launcher.stderr.on('data', (chunk) => { stderr += chunk; });
+    const code = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('companion API kept the launcher output open')), 5000);
+      launcher.on('close', (exitCode) => { clearTimeout(timer); resolve(exitCode); });
+    });
+    assert.equal(code, 1);
+    assert.match(stderr, /Could not launch the local app/);
+  } finally {
+    launcher.kill('SIGKILL');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
