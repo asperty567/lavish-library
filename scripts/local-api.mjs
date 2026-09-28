@@ -281,7 +281,10 @@ function manifestPath(config, artifact) {
 function localAssetReferences(html) {
   const references = new Set();
   for (const match of html.matchAll(/\bsrc\s*=\s*["']([^"']+)["']/gi)) references.add(match[1]);
-  for (const match of html.matchAll(/<link\b[^>]*?\shref\s*=\s*["']([^"']+)["']/gi)) references.add(match[1]);
+  for (const tag of html.matchAll(/<([a-z][\w:-]*)\b[^>]*>/gi)) {
+    if (/^(?:a|area)$/i.test(tag[1])) continue;
+    for (const match of tag[0].matchAll(/\s(?:xlink:)?href\s*=\s*["']([^"']+)["']/gi)) references.add(match[1]);
+  }
   for (const match of html.matchAll(/srcset\s*=\s*["']([^"']+)["']/gi)) {
     for (const item of match[1].replace(/data:[^\s]+/gi, '').split(',')) references.add(item.trim().split(/\s+/)[0]);
   }
@@ -302,7 +305,7 @@ function insideFolder(folder, file) {
 }
 
 // A bundle includes HTML and bounded sibling/nested local subresources (src/srcset,
-// <link href>, CSS url()/@import, and referenced directory contents). Navigation
+// href/xlink:href, CSS url()/@import, and referenced directory contents). Navigation
 // links (<a>/<area> href) are not dependencies. Remote/data URLs contribute
 // no asset bytes; their text still belongs to the HTML/CSS checksum. Missing local
 // paths have explicit identity entries. All asset symlinks, including symlinked

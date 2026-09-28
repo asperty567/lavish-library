@@ -260,6 +260,24 @@ test('navigation links are not dependencies and restore keeps later artifacts an
   });
 });
 
+test('SVG href subresources are dependencies whose asset-only edits create versions', async () => {
+  await fixture(async ({ sourceDir, file, html, get, post, history }) => {
+    await writeFile(path.join(sourceDir, 'chart.png'), 'chart-one');
+    await writeFile(path.join(sourceDir, 'sprite.svg'), '<svg></svg>');
+    await writeFile(file, `${html}<svg><image href="chart.png"/><use xlink:href="sprite.svg#icon"/></svg>`);
+    await post('/artifacts/snapshot');
+    const baseline = (await history()).versions[0];
+    assert(baseline.bundle.some((entry) => entry.path === 'chart.png' && entry.status === 'file'));
+    assert(baseline.bundle.some((entry) => entry.path === 'sprite.svg' && entry.status === 'file'));
+    await writeFile(path.join(sourceDir, 'chart.png'), 'chart-two');
+    await get('/library');
+    const result = await history();
+    assert.equal(result.versions.length, 2);
+    assert.equal(result.versions[0].sha256, baseline.sha256);
+    assert.notEqual(result.versions[0].bundleSha256, baseline.bundleSha256);
+  });
+});
+
 test('restore refuses symlinked destinations without modifying external bytes', async () => {
   await fixture(async ({ directory, sourceDir, file, api, post, history }) => {
     await post('/artifacts/snapshot');
