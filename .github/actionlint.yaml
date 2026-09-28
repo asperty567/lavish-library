@@ -1,0 +1,2 @@
+self-hosted-runner:
+  labels: [ji7, lavish-library]

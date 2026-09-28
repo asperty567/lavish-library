@@ -6,7 +6,7 @@ A private, local-first browser library for finding and reopening Lavish review s
 
 - Reads Lavish's central session history from `~/.lavish-axi/state.json`
 - Automatically groups known artifacts by project
-- Finds additional HTML artifacts in project `.lavish` folders
+- Finds additional HTML artifacts in project `.lavish` folders (generated `.export.html` and `-portable.html` copies are omitted unless opened in Lavish)
 - Shows session state, server availability, last-used time, edit time, and file size
 - Searches, filters, sorts, and switches between grid and list views
 - Opens or reopens an artifact with `lavish-axi`
@@ -63,6 +63,8 @@ The app expects Lavish at `/opt/homebrew/bin/lavish-axi` by default. If `command
 LAVISH_AXI_BIN="$(command -v lavish-axi)" npm run dev
 ```
 
+The library health check uses `LAVISH_AXI_PORT` (default `4387`), matching the port used by the CLI. When Lavish reports an installation identity (v0.1.78+), the library checks that it belongs to the configured state directory. The configured state directory remains `LAVISH_AXI_STATE_DIR` or `~/.lavish-axi`.
+
 Open [http://localhost:3000](http://localhost:3000). The library refreshes when the page loads and whenever you press the refresh button.
 
 To use another local UI port, set it explicitly for both services:
@@ -83,3 +85,11 @@ The web UI listens on localhost and its filesystem companion service listens on 
 ## License
 
 [MIT](LICENSE) © 2026 Jarad Smith
+
+## Development checks and CI
+
+Run `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build`. Session reply counts measure retained agent replies; reviewer messages still contribute to last-used timestamps. Upstream bounds retained chat, so these counts are not lifetime totals.
+
+CI uses the dedicated `ji7-lavish-library` runner on JI7 for main pushes and same-repository pull requests. Fork pull requests use GitHub-hosted Ubuntu runners. The repository Actions setting requires approval for **all external contributors**. The self-hosted job also checks the PR head repository before scheduling. Keep both protections in place; reviewing a fork workflow must include checking any changes to runner selection. Release Please stays on GitHub-hosted Ubuntu because it needs only GitHub API/token access.
+
+The JI7 runner runs as the `fm-manage` user service `actions-runner-ji7-lavish-library.service`, with labels `self-hosted`, `Linux`, `X64`, `ji7`, and `lavish-library`. Its installation is `/home/fm-manage/actions-runners/ji7-lavish-library`; its work directory is `_work`. It follows the existing user-systemd runner setup and is enabled at startup.
