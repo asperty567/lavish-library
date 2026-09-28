@@ -197,7 +197,7 @@ test('referenced directory contents keep literal filenames and safety copies sur
     const assetDir = path.join(sourceDir, 'bundle');
     await mkdir(assetDir);
     await writeFile(path.join(assetDir, 'a#b%20.png'), 'literal-one');
-    await writeFile(file, '<title>Directory bundle</title><a href="bundle/">Assets</a>');
+    await writeFile(file, '<title>Directory bundle</title><link href="bundle/">');
     await post('/artifacts/snapshot');
     const baselineHistory = await history();
     const baseline = baselineHistory.versions[0];
@@ -229,6 +229,34 @@ test('restoring missing assets preserves newly created bytes before removing the
     const safety = result.versions.find((version) => version.reason === 'pre-restore');
     assert.equal(await readFile(path.join(result.archivePath, path.dirname(safety.file), 'later.png'), 'utf8'), 'created-after-snapshot');
     assert.equal(result.versions[0].isCurrent, true);
+  });
+});
+
+test('navigation links are not dependencies and restore keeps later artifacts and directories', async () => {
+  await fixture(async ({ directory, sourceDir, file, html, get, post, history }) => {
+    await writeFile(file, `${html}<a href="report.html">Report</a><a href="docs/">Docs</a><iframe src="embedded.html"></iframe><img src="late-dir/">`);
+    await post('/artifacts/snapshot');
+    const baseline = (await history()).versions[0];
+    assert.equal(baseline.bundle.some((entry) => entry.path === 'report.html' || entry.path === 'docs'), false);
+    assert(baseline.bundle.some((entry) => entry.path === 'embedded.html' && entry.status === 'missing'));
+    assert(baseline.bundle.some((entry) => entry.path === 'late-dir' && entry.status === 'missing'));
+    const report = path.join(sourceDir, 'report.html');
+    const embedded = path.join(sourceDir, 'embedded.html');
+    await writeFile(report, '<title>Report</title>');
+    await writeFile(embedded, '<title>Embedded</title>');
+    await mkdir(path.join(sourceDir, 'docs'));
+    await writeFile(path.join(sourceDir, 'docs/guide.txt'), 'guide');
+    await mkdir(path.join(sourceDir, 'late-dir'));
+    await writeFile(path.join(sourceDir, 'late-dir/image.png'), 'late');
+    await writeFile(path.join(directory, 'state/state.json'), JSON.stringify({ sessions: { demo: { file }, embedded: { file: embedded } } }));
+    await get('/library');
+    await post('/versions/restore', { file, versionId: baseline.id });
+    assert.equal(await readFile(report, 'utf8'), '<title>Report</title>');
+    assert.equal(await readFile(embedded, 'utf8'), '<title>Embedded</title>');
+    assert.equal(await readFile(path.join(sourceDir, 'docs/guide.txt'), 'utf8'), 'guide');
+    assert.equal(await readFile(path.join(sourceDir, 'late-dir/image.png'), 'utf8'), 'late');
+    const library = await get('/library');
+    assert.equal(library.artifacts.find((artifact) => artifact.file === embedded)?.exists, true);
   });
 });
 
