@@ -43,9 +43,13 @@ See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
 ## Version archive
 
-Choose **Set up archive** in the app and select any local or synced folder. The app creates a readable `Lavish Library Archive` beneath it, grouped by project and artifact. Each version has its own HTML file, local assets, checksum, timestamps, and manifest entry.
+Choose **Set up archive** in the app and select any local or synced folder. The app creates a readable `Lavish Library Archive` beneath it, grouped by project and artifact. Each version has its own HTML file, local assets, a complete bundle checksum, timestamps, and manifest entry. Identity includes the HTML bytes and the paths, bytes, and availability of its bounded local dependencies, so CSS and image edits create versions even when HTML is unchanged.
 
-The first scan creates a baseline. While the app is running, watched files are backed up shortly after each saved change; a 30-second reconciliation scan catches new artifacts and anything a watcher missed. Restoring an older version always archives the current file first. Pausing backups never deletes existing copies.
+The first scan creates a baseline. While the app is running, watched files are backed up shortly after each saved change; a 30-second reconciliation scan catches new artifacts and anything a watcher missed. Restoring an older version archives the current bundle first, including any files the restore will overwrite even if the current HTML no longer references them. Missing dependency files are restored to their missing state after preserving any newer local bytes; directories and other Lavish artifacts at those paths are left in place. Pausing backups never deletes existing copies.
+
+Dependencies are relative sibling/nested subresources inside the artifact folder: `src`/`srcset`, `href`/`xlink:href` (for example `<link>`, SVG `<image>` and `<use>`), CSS `url(...)`/`@import` references, and referenced directory contents. Navigation links (`<a>`/`<area>` `href`) are not dependencies. Parent-folder and absolute paths are excluded. HTTP, other remote schemes, and data URLs are not fetched and add no asset bytes to the checksum (their URL text remains part of the HTML/CSS bytes). Missing local assets are recorded as missing rather than failing the backup. Asset symlinks and paths through symlinked directories are recorded as excluded symlinks and never followed, even when their targets are inside the folder; restore refuses writes through a symlinked destination. Symlinked HTML sources cannot be archived or restored. Symlink targets and other unsupported filesystem entries are not restored.
+
+New manifest entries use schema version 2 and retain the HTML checksum alongside the bundle checksum. Schema version 1 entries still read and restore: their bundle identity is derived from their archived files. Legacy restores preserve assets absent from the archive because version 1 did not record missing states. The next new snapshot upgrades the manifest header and appends an entry without changing old entries or archived bytes.
 
 ## Run it
 
