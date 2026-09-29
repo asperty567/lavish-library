@@ -98,7 +98,13 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 .filter-pills button { padding: 7px 11px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; }
 .filter-pills button.selected { color: var(--wine); background: var(--overlay); font-weight: 650; }
 .filter-pills button span { margin-left: 4px; color: var(--ghost); }
-.view-tools { gap: 14px; }
+.view-tools { gap: 14px; flex-wrap: wrap; }
+.view-tools .bulk-select { display: flex; align-items: center; gap: 5px; text-transform: none; }
+.view-tools .selection-count { font-size: 11px; color: var(--muted); }
+.view-tools > button, .card-meta > button:last-child { border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; color: var(--muted); background: transparent; cursor: pointer; }
+.view-tools > button:disabled, .card-meta > button:disabled { opacity: .5; cursor: not-allowed; }
+.card-select { flex: 0 0 auto; padding-top: 2px; }
+.card-select input, .bulk-select input { accent-color: #b5828e; }
 .view-tools label { color: var(--ghost); font-size: 10px; text-transform: uppercase; }
 .view-tools select { margin-left: 5px; border: 0; outline: 0; color: var(--muted); background: transparent; font-size: 11px; text-transform: none; }
 .view-switch { padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--overlay); }
@@ -144,7 +150,7 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 .status-feedback { color: var(--muted); }.status-feedback::before { background: #f59e0b; }
 .status-ended { color: var(--muted); }.status-ended::before { background: var(--ghost); }
 .description { height: 32px; margin: 8px 0 14px; overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.55; }
-.card-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ghost); font-size: 8px; }
+.card-meta { display: grid; grid-template-columns: minmax(0, 1fr) repeat(5, auto); align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ghost); font-size: 8px; }
 .card-meta > span { min-width: 0; display: flex; align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card-meta .icon { margin-right: 3px; }
 .history-chip { height: 23px; display: flex; align-items: center; gap: 2px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--ghost); background: var(--elevated); cursor: pointer; font-size: 8px; }

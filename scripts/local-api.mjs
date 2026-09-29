@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { constants, createReadStream, watch } from 'node:fs';
-import { access, copyFile, cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, cp, lstat, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +23,7 @@ const CONFIG_DIR = process.env.LAVISH_TRACKER_CONFIG_DIR
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const ANALYTICS_FILE = path.join(CONFIG_DIR, 'analytics.json');
 const LAVISH_BIN = process.env.LAVISH_AXI_BIN || '/opt/homebrew/bin/lavish-axi';
+const TRASH_BIN = process.env.LAVISH_TRACKER_TRASH_BIN || '/usr/bin/trash';
 const ARCHIVE_NAME = 'Lavish Library Archive';
 const API_TOKEN = randomBytes(32).toString('base64url');
 const runLavish = promisify(execFile);
@@ -128,6 +129,7 @@ async function readConfig() {
   return {
     projects: Array.isArray(config.projects) ? config.projects : [],
     archiveRoot: typeof config.archiveRoot === 'string' && config.archiveRoot.trim() ? path.resolve(config.archiveRoot) : null,
+    trashedArtifacts: Array.isArray(config.trashedArtifacts) ? config.trashedArtifacts.filter((file) => typeof file === 'string') : [],
   };
 }
 
@@ -515,10 +517,12 @@ async function buildLibrary() {
   const artifactPaths = new Set(knownArtifacts.artifactPaths);
   const sessionByFile = new Map(sessions.map((session) => [path.resolve(session.file), session]));
   const artifacts = [];
+  const trashed = new Set(config.trashedArtifacts);
   let hasLoose = false;
 
   for (const fileValue of artifactPaths) {
     const file = path.resolve(fileValue);
+    if (trashed.has(file)) continue;
     const session = sessionByFile.get(file);
     const root = projectRootFor(file);
     let project = root ? projectMap.get(root) : null;
@@ -1272,6 +1276,41 @@ const server = createServer(async (req, res) => {
       const manifest = await snapshotArtifact(config, artifact, 'manual');
       await recordEvent('snapshot', { artifactId: artifact.id, label: 'Manual version protected' });
       return json(res, 201, { ok: true, versionCount: manifest?.versions.length || 0 }, origin);
+    }
+    if (req.method === 'POST' && url.pathname === '/api/artifacts/trash') {
+      const input = await body(req);
+      if (!Array.isArray(input.ids) || input.ids.length < 1 || input.ids.length > 100 ||
+          input.ids.some((id) => !looksLikeArtifactId(id)) || new Set(input.ids).size !== input.ids.length) {
+        throw new Error('Choose 1 to 100 distinct Library entries.');
+      }
+      const library = await buildLibrary();
+      const byId = new Map(library.artifacts.map((artifact) => [artifact.id, artifact]));
+      const targets = input.ids.map((id) => byId.get(id));
+      if (targets.some((artifact) => !artifact)) throw new Error('Refresh the Library and select entries again.');
+      if (targets.some((artifact) => artifact.exists && (artifact.sessionStatus === 'open' || artifact.sessionStatus === 'feedback'))) {
+        throw new Error('End active reviews before moving their files to Trash.');
+      }
+      // Validate every target before touching any file. Never follow a symlink or trash a directory.
+      for (const artifact of targets) {
+        if (!artifact.exists) continue;
+        const fileStat = await lstat(artifact.file);
+        if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new Error('Only regular files can be moved to Trash.');
+      }
+      const config = await readConfig();
+      const trashed = new Set(config.trashedArtifacts);
+      const moved = [];
+      for (const artifact of targets) {
+        try {
+          if (artifact.exists) await runLavish(TRASH_BIN, [artifact.file], { timeout: 20_000 });
+          trashed.add(artifact.file);
+          config.trashedArtifacts = [...trashed];
+          await saveConfig(config);
+          moved.push(artifact.id);
+        } catch (error) {
+          return json(res, 409, { error: error instanceof Error ? error.message : 'Could not move file to Trash.', moved }, origin);
+        }
+      }
+      return json(res, 200, { ok: true, moved }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/open') {
       const input = await body(req);

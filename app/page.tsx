@@ -131,6 +131,8 @@ export default function Home() {
   const [historyArtifact, setHistoryArtifact] = useState<Artifact | null>(null);
   const [history, setHistory] = useState<VersionHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [trashing, setTrashing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const trackedSearchRef = useRef('');
 
@@ -264,6 +266,33 @@ export default function Home() {
       window.location.assign(result.url);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Lavish could not be opened.');
+    }
+  }
+
+  async function trashArtifacts(ids: string[]) {
+    const targets = (library?.artifacts ?? []).filter((artifact) => ids.includes(artifact.id));
+    if (targets.length !== ids.length || !targets.length) return;
+    const active = targets.filter((artifact) => artifact.exists && (artifact.sessionStatus === 'open' || artifact.sessionStatus === 'feedback'));
+    if (active.length) {
+      setNotice('End active reviews before moving their files to Trash.');
+      return;
+    }
+    const files = targets.filter((artifact) => artifact.exists).length;
+    if (!window.confirm(`Move ${files} file${files === 1 ? '' : 's'} to Mac Trash and remove ${targets.length} entr${targets.length === 1 ? 'y' : 'ies'} from the Library? Saved versions and Lavish session history stay on disk.`)) return;
+    setTrashing(true);
+    try {
+      const response = await apiFetch('/artifacts/trash', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not move selected files to Trash.');
+      setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+      await loadLibrary(true);
+    } catch (error) {
+      await loadLibrary(true);
+      setNotice(error instanceof Error ? error.message : 'Could not move selected files to Trash.');
+    } finally {
+      setTrashing(false);
     }
   }
 
@@ -496,6 +525,8 @@ export default function Home() {
               <button className={statusFilter === 'discovered' ? 'selected' : ''} onClick={() => setStatusFilter('discovered')}>Discovered <span>{filterCounts.discovered}</span></button>
             </div>
             <div className="view-tools">
+              <label className="bulk-select"><input type="checkbox" aria-label="Select all visible lavishes" checked={artifacts.length > 0 && artifacts.every((artifact) => selectedIds.includes(artifact.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...artifacts.map((artifact) => artifact.id)])] : current.filter((id) => !artifacts.some((artifact) => artifact.id === id)))} /> Select visible</label>
+              {selectedIds.length > 0 && <><span className="selection-count">{selectedIds.length} selected</span><button disabled={trashing} onClick={() => void trashArtifacts(selectedIds)}>Move to Trash</button><button onClick={() => setSelectedIds([])}>Clear</button></>}
               <label>Sort <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="recent">Recently used</option><option value="edited">Last edited</option><option value="name">Name</option></select></label>
               <div className="view-switch"><button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Grid view"><Icon name="grid" /></button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')} aria-label="List view"><Icon name="list" /></button></div>
             </div>
@@ -522,9 +553,9 @@ export default function Home() {
                       <div className="card-actions">{artifact.exists && artifact.url ? <a href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></a> : <button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists} title={!artifact.exists ? 'That file is missing on this Mac' : undefined}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button>}</div>
                     </div>
                     <div className="card-body">
-                      <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
+                      <div className="card-heading"><label className="card-select"><input type="checkbox" aria-label={`Select ${artifact.title}`} checked={selectedIds.includes(artifact.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, artifact.id] : current.filter((id) => id !== artifact.id))} /></label><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
                       <p className="description">{artifact.description || artifact.relativePath}</p>
-                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span>{artifact.exists && artifact.url ? <a className="open-link" href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'}</a> : null}<button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
+                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span>{artifact.exists && artifact.url ? <a className="open-link" href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'}</a> : null}<button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button><button disabled={trashing} onClick={() => void trashArtifacts([artifact.id])} aria-label={`Move ${artifact.title} to Trash`}>Trash</button></div>
                     </div>
                   </article>
                 );
