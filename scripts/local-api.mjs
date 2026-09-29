@@ -1,10 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { constants, createReadStream, watch } from 'node:fs';
 import { access, copyFile, cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 const PORT = Number(process.env.LAVISH_TRACKER_API_PORT || 4318);
 const requestedUiPort = Number(process.env.LAVISH_TRACKER_UI_PORT || 3000);
@@ -24,6 +25,7 @@ const ANALYTICS_FILE = path.join(CONFIG_DIR, 'analytics.json');
 const LAVISH_BIN = process.env.LAVISH_AXI_BIN || '/opt/homebrew/bin/lavish-axi';
 const ARCHIVE_NAME = 'Lavish Library Archive';
 const API_TOKEN = randomBytes(32).toString('base64url');
+const runLavish = promisify(execFile);
 const artifactWatchers = new Map();
 const snapshotQueues = new Map();
 let analyticsQueue = Promise.resolve();
@@ -1065,18 +1067,6 @@ function libraryForClient(library, origin) {
   };
 }
 
-async function waitForSessionUrl(file, timeoutMs = 5_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await scanKnownArtifacts({ force: true });
-    const artifact = await artifactForFile(file);
-    if (artifact.url) return artifact.url;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  await scanKnownArtifacts({ force: true });
-  return (await artifactForFile(file)).url || null;
-}
-
 function tokenAllowed(value) {
   const supplied = Buffer.from(String(value || ''));
   const expected = Buffer.from(API_TOKEN);
@@ -1293,12 +1283,23 @@ const server = createServer(async (req, res) => {
       }
       const args = [artifact.file];
       if (input.reopen) args.push('--reopen');
-      spawn(LAVISH_BIN, args, { detached: true, stdio: 'ignore' }).unref();
-      const sessionUrl = artifact.url || await waitForSessionUrl(artifact.file) || sessionUrlForFile(artifact.file);
-      let urlForClient = reviewUrlForClient(sessionUrl, origin) || rewriteSessionUrl(sessionUrl, artifact.file);
-      if (!urlForClient || urlForClient.includes(':4387') || /^http:\/\/mac-studio(\.|:|\/|$)/i.test(urlForClient)) {
-        urlForClient = rewriteSessionUrl(sessionUrl, artifact.file);
+      // A detached launch used to return a plausible URL even when Lavish crashed,
+      // refused a user-ended session, or never created a session at all.
+      const { stdout } = await runLavish(LAVISH_BIN, args, { timeout: 20_000, maxBuffer: 1024 * 1024 });
+      // axi prints a text record, not JSON: session: followed by indented fields.
+      const sessionBlock = stdout.match(/^session:\s*\n((?:[ \t]+[^\n]*\n?)*)/m)?.[1] || '';
+      const field = (name) => sessionBlock.match(new RegExp(`^[ \\t]+${name}: *([^\\r\\n]+)`, 'm'))?.[1]?.trim();
+      const status = field('status');
+      const rawUrl = field('url');
+      let url = rawUrl;
+      if (rawUrl?.startsWith('"')) {
+        try { url = JSON.parse(rawUrl); } catch { url = null; }
       }
+      if (status === 'user-ended') throw new Error('This review was ended by the user. Reopen it explicitly to continue.');
+      if (!status || status === 'ended' || !url || !/^https?:\/\/[^\s]+\/session\/[^/\s]+$/.test(url)) {
+        throw new Error('Lavish did not confirm an open session.');
+      }
+      const urlForClient = reviewUrlForClient(url, origin);
       if (!urlForClient) throw new Error('Lavish opened on the Mac, but no review URL was available.');
       await recordEvent('open', { artifactId: artifact.id, query: input.query, label: input.reopen ? 'Lavish reopened' : 'Lavish opened' });
       return json(res, 202, { ok: true, id: artifact.id, url: urlForClient }, origin);

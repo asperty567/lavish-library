@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const root = process.cwd();
+const fakeLavishBin = path.join(root, 'tests/fixtures/fake-lavish-open.mjs');
 const port = 44_000 + (process.pid % 1_000);
 const api = `http://127.0.0.1:${port}/api`;
 let service;
@@ -55,7 +56,7 @@ before(async () => {
   await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Signal Project' }], archiveRoot: null }));
   service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
     cwd: root,
-    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_UI_PORT: '3007', LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true', LAVISH_TRACKER_DROP_DIR: '' },
+    env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_UI_PORT: '3007', LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: fakeLavishBin, LAVISH_TRACKER_DROP_DIR: '' },
     stdio: 'ignore',
   });
   await waitForApi();
@@ -85,6 +86,44 @@ test('opens by artifact id or file path with a canonical 4389 session URL', asyn
     assert.equal(result.url.includes('4387'), false);
     assert.doesNotMatch(result.url, /^http:\/\/mac-studio/i);
     assert.doesNotMatch(result.error || '', /no longer exists/i);
+  }
+});
+
+test('refuses a fabricated Open link when Lavish does not establish a session', async () => {
+  const failurePort = port + 31;
+  const cases = [
+    { bin: '/usr/bin/true', status: undefined, expected: /did not confirm an open session/i },
+    { bin: fakeLavishBin, status: 'user-ended', expected: /ended by the user/i },
+  ];
+  for (const [index, scenario] of cases.entries()) {
+    const servicePort = failurePort + index;
+    const failedService = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
+      cwd: root,
+      env: {
+        ...process.env,
+        LAVISH_TRACKER_API_PORT: String(servicePort),
+        LAVISH_TRACKER_CONFIG_DIR: path.join(fixture, 'tracker-state'),
+        LAVISH_AXI_STATE_DIR: path.join(fixture, 'lavish-state'),
+        LAVISH_AXI_BIN: scenario.bin,
+        FAKE_LAVISH_STATUS: scenario.status || '',
+        LAVISH_TRACKER_DROP_DIR: '',
+      },
+      stdio: 'ignore',
+    });
+    try {
+      await waitForService(servicePort);
+      const response = await fetch(`http://127.0.0.1:${servicePort}/api/artifacts/open`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file: lavishFile }),
+      });
+      const result = await response.json();
+      assert.equal(response.status, 400);
+      assert.match(result.error, scenario.expected);
+      assert.equal(result.url, undefined);
+    } finally {
+      failedService.kill('SIGTERM');
+    }
   }
 });
 
@@ -189,7 +228,7 @@ test('allows the configured Tailscale UI origin and Serve host', async () => {
       LAVISH_TRACKER_PUBLIC_ORIGIN: publicOrigin,
       LAVISH_TRACKER_CONFIG_DIR: configDir,
       LAVISH_AXI_STATE_DIR: stateDir,
-      LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_AXI_BIN: fakeLavishBin,
       LAVISH_TRACKER_DROP_DIR: '',
     },
     stdio: 'ignore',
@@ -455,7 +494,7 @@ test('hides discovered drop copies when a live session has the same title', asyn
       LAVISH_TRACKER_PUBLIC_ORIGIN: 'https://mac-studio.tail1c136e.ts.net:3000',
       LAVISH_TRACKER_CONFIG_DIR: configDir,
       LAVISH_AXI_STATE_DIR: stateDir,
-      LAVISH_AXI_BIN: '/usr/bin/true',
+      LAVISH_AXI_BIN: fakeLavishBin,
       LAVISH_TRACKER_DROP_DIR: dropDir,
     },
     stdio: 'ignore',
