@@ -52,6 +52,7 @@ type VersionHistory = {
   enabled: boolean;
   archivePath?: string;
   sourceFile?: string;
+  sourceExists?: boolean;
   versions: ArchivedVersion[];
 };
 
@@ -361,7 +362,8 @@ export default function Home() {
 
   async function restoreArchivedVersion(version: ArchivedVersion) {
     if (!historyArtifact || version.isCurrent) return;
-    if (!window.confirm(`Restore the version from ${fullDate(version.createdAt)}? The current file will be backed up first.`)) return;
+    const sourceMissing = history?.sourceExists === false;
+    if (!window.confirm(`Restore the version from ${fullDate(version.createdAt)}? ${sourceMissing ? 'The missing source file will be recreated with its archived assets.' : 'The current file will be backed up first.'}`)) return;
     setNotice(`Restoring “${historyArtifact.title}”…`);
     try {
       const response = await apiFetch('/versions/restore', {
@@ -370,7 +372,7 @@ export default function Home() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not restore that version.');
       await Promise.all([loadLibrary(true), loadHistory(historyArtifact)]);
-      setNotice('Version restored. The previous current file was preserved in the archive.');
+      setNotice(result.sourceRecreated ? 'Version restored. The missing source file was recreated.' : 'Version restored. The previous current file was preserved in the archive.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not restore that version.');
     }
@@ -538,7 +540,8 @@ export default function Home() {
               <div className="history-empty"><div><Icon name="archive" /></div><h3>No archive folder yet</h3><p>Choose a folder to create a baseline and start tracking every future revision.</p><button onClick={() => void chooseArchiveFolder()}>Choose archive folder</button></div>
             ) : (
               <>
-                <div className="history-summary"><div><strong>{history.versions.length}</strong><span>saved versions</span></div><button onClick={() => void createSnapshot()}><Icon name="plus" /> Back up now</button></div>
+                <div className="history-summary"><div><strong>{history.versions.length}</strong><span>saved versions</span></div><button disabled={history.sourceExists === false} onClick={() => void createSnapshot()}><Icon name="plus" /> Back up now</button></div>
+                {history.sourceExists === false && <p className="history-loading">The source file is missing. Restore a saved version to recover it.</p>}
                 <div className="timeline">
                   {history.versions.map((version, index) => (
                     <article className={`version-row ${version.isCurrent ? 'current' : ''}`} key={version.id}>
@@ -547,7 +550,7 @@ export default function Home() {
                         <div className="version-title"><strong>{version.isCurrent ? 'Current protected version' : index === history.versions.length - 1 ? 'Original baseline' : `Revision ${history.versions.length - index}`}</strong><span>{relativeTime(version.createdAt)}</span></div>
                         <p>{fullDate(version.createdAt)} · {formatSize(version.size)} · {version.lineCount.toLocaleString()} lines</p>
                         <div className="version-deltas"><span>{deltaLabel(version.lineDelta, 'lines')}</span><span>{version.assetsCopied} local assets</span><span>{version.reason === 'pre-restore' ? 'Safety copy' : version.reason === 'restore' ? 'Restored' : version.reason === 'change' ? 'Auto-saved' : version.reason === 'manual' ? 'Manual copy' : 'Scan'}</span></div>
-                        <div className="version-actions"><button onClick={() => void openArchivedVersion(version)}>Open copy <Icon name="arrow" /></button><button disabled={version.isCurrent} onClick={() => void restoreArchivedVersion(version)}><Icon name="restore" /> {version.isCurrent ? 'In use' : 'Restore'}</button></div>
+                        <div className="version-actions"><button disabled={history.sourceExists === false} onClick={() => void openArchivedVersion(version)}>Open copy <Icon name="arrow" /></button><button disabled={version.isCurrent} onClick={() => void restoreArchivedVersion(version)}><Icon name="restore" /> {version.isCurrent ? 'In use' : 'Restore'}</button></div>
                       </div>
                     </article>
                   ))}

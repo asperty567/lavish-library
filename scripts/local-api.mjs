@@ -234,7 +234,13 @@ async function scanKnownArtifacts(options = {}) {
 
     const artifactPaths = new Set(sessions.map((session) => path.resolve(session.file)));
     for (const files of projectFiles.values()) for (const file of files) artifactPaths.add(file);
-    return { sessions, projectMap, projectFiles, artifactPaths };
+    const archivedArtifacts = await scanArchivedArtifacts(config);
+    for (const file of archivedArtifacts.keys()) {
+      artifactPaths.add(file);
+      const root = projectRootFor(file);
+      if (root && !projectMap.has(root)) projectMap.set(root, { id: idFor(root), name: path.basename(root), path: root, source: 'automatic' });
+    }
+    return { sessions, projectMap, projectFiles, artifactPaths, archivedArtifacts };
   })();
 
   try {
@@ -276,6 +282,31 @@ function artifactArchiveDir(config, artifact) {
 
 function manifestPath(config, artifact) {
   return path.join(artifactArchiveDir(config, artifact), 'manifest.json');
+}
+
+async function scanArchivedArtifacts(config) {
+  const artifacts = new Map();
+  if (!config.archiveRoot) return artifacts;
+  const home = archiveHome(config);
+  const directories = async (folder) => (await readdir(folder, { withFileTypes: true }).catch(() => []))
+    .filter((entry) => entry.isDirectory());
+  for (const project of await directories(home)) {
+    for (const entry of await directories(path.join(home, project.name))) {
+      const directory = path.join(home, project.name, entry.name);
+      if (await localPathStatus(home, path.join(directory, 'manifest.json')) !== 'file') continue;
+      const manifest = await readJson(path.join(directory, 'manifest.json'), null);
+      if (!manifest || typeof manifest.sourceFile !== 'string' || !path.isAbsolute(manifest.sourceFile)) continue;
+      const file = path.resolve(manifest.sourceFile);
+      const artifact = { id: idFor(file), file };
+      // Only an on-disk manifest in the server's expected archive location can
+      // retain a deleted artifact. Never add a request path to the allowlist.
+      if (!/\.html?$/i.test(file) || manifest.artifactId !== artifact.id
+        || !Array.isArray(manifest.versions) || !manifest.versions.length
+        || directory !== artifactArchiveDir(config, artifact)) continue;
+      artifacts.set(file, manifest);
+    }
+  }
+  return artifacts;
 }
 
 function localAssetReferences(html) {
@@ -388,7 +419,7 @@ async function archivedBundleSha(config, artifact, version) {
 }
 
 async function readManifest(config, artifact) {
-  return readJson(manifestPath(config, artifact), {
+  const manifest = await readJson(manifestPath(config, artifact), {
     schemaVersion: 2,
     artifactId: artifact.id,
     sourceFile: artifact.file,
@@ -396,6 +427,11 @@ async function readManifest(config, artifact) {
     projectName: artifact.projectName,
     versions: [],
   });
+  if (manifest.artifactId !== artifact.id || typeof manifest.sourceFile !== 'string'
+    || path.resolve(manifest.sourceFile) !== artifact.file || !Array.isArray(manifest.versions)) {
+    throw new Error('Archive manifest does not match this artifact.');
+  }
+  return manifest;
 }
 
 async function snapshotArtifactNow(config, artifact, reason = 'scan', supplementalAssets = []) {
@@ -549,12 +585,13 @@ async function buildLibrary() {
     const fileExists = await exists(file);
     const fileStat = fileExists ? await stat(file) : null;
     const metadata = fileExists ? await htmlMetadata(file) : { title: '', description: '' };
+    const archivedMetadata = knownArtifacts.archivedArtifacts.get(file);
     const fallbackTitle = path.basename(file).replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
     const chatDates = Array.isArray(session?.chat) ? session.chat.map((item) => item.at).filter(Boolean) : [];
     const lastUsedAt = [session?.updated_at, ...chatDates].filter(Boolean).sort().at(-1) || null;
     artifacts.push({
       id: idFor(file), projectId: project.id, projectName: project.name,
-      title: metadata.title || fallbackTitle, description: metadata.description, file,
+      title: metadata.title || archivedMetadata?.title || fallbackTitle, description: metadata.description, file,
       relativePath: project === looseProject ? file : path.relative(project.path, file),
       modifiedAt: fileStat?.mtime?.toISOString() || null, lastUsedAt, size: fileStat?.size || 0, exists: fileExists,
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),
@@ -569,10 +606,10 @@ async function buildLibrary() {
   const watchDirsByFile = new Map();
   if (config.archiveRoot) {
     for (const artifact of artifacts) {
-      if (!artifact.exists) continue;
       try {
-        const { manifest, watchDirs } = await snapshotArtifact(config, artifact, 'scan');
-        watchDirsByFile.set(artifact.file, watchDirs);
+        const snapshot = artifact.exists ? await snapshotArtifact(config, artifact, 'scan') : null;
+        const manifest = snapshot?.manifest || await readManifest(config, artifact);
+        if (snapshot) watchDirsByFile.set(artifact.file, snapshot.watchDirs);
         artifact.versionCount = manifest?.versions.length || 0;
         artifact.lastBackedUpAt = manifest?.versions.at(-1)?.createdAt || null;
         totalVersions += artifact.versionCount;
@@ -615,21 +652,23 @@ function projectForFile(file, projectMap) {
   return [...projectMap.values()].find((candidate) => file.startsWith(`${candidate.path}${path.sep}`)) || null;
 }
 
-async function artifactForFile(file) {
+async function knownArtifactForFile(file) {
   const resolved = path.resolve(String(file || ''));
-  if (!/\.html?$/i.test(resolved) || !(await exists(resolved))) throw new Error('That Lavish file no longer exists.');
-  const fileStat = await stat(resolved).catch(() => null);
-  if (!fileStat?.isFile()) throw new Error('That Lavish file no longer exists.');
+  if (!/\.html?$/i.test(resolved)) throw new Error('That file is not a known Lavish artifact.');
   const { projectMap, sessions, artifactPaths } = await knownProjectMap();
   const session = sessions.find((candidate) => path.resolve(candidate.file || '') === resolved) || null;
   const project = projectForFile(resolved, projectMap);
   if (!artifactPaths.has(resolved)) throw new Error('That file is not a known Lavish artifact.');
-  const metadata = await htmlMetadata(resolved);
+  const fileStat = await lstat(resolved).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  const metadata = fileStat ? await htmlMetadata(resolved) : { title: '', description: '' };
   const fallbackTitle = path.basename(resolved).replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
   return {
     id: idFor(resolved),
     file: resolved,
-    exists: true,
+    exists: Boolean(fileStat),
     title: metadata.title || fallbackTitle,
     description: metadata.description,
     projectId: project?.id || 'loose',
@@ -643,8 +682,14 @@ async function artifactForFile(file) {
   };
 }
 
+async function artifactForFile(file) {
+  const artifact = await knownArtifactForFile(file);
+  if (!artifact.exists || !(await stat(artifact.file)).isFile()) throw new Error('That Lavish file no longer exists.');
+  return artifact;
+}
+
 async function versionsFor(file) {
-  const artifact = await artifactForFile(file);
+  const artifact = await knownArtifactForFile(file);
   const config = await readConfig();
   if (!config.archiveRoot) return { enabled: false, versions: [] };
   const manifest = await readManifest(config, artifact);
@@ -654,6 +699,7 @@ async function versionsFor(file) {
     const version = manifest.versions[index];
     const supplementalAssets = version.supplementalAssets || [];
     const key = JSON.stringify(supplementalAssets);
+    if (!artifact.exists) continue;
     if (!currentShas.has(key)) currentShas.set(key, (await collectBundle(artifact.file, supplementalAssets)).bundleSha256);
     const currentSha = currentShas.get(key);
     const archivedSha = await archivedBundleSha(config, artifact, version).catch(() => null);
@@ -668,15 +714,14 @@ async function versionsFor(file) {
       lineDelta: previous ? version.lineCount - previous.lineCount : 0,
     };
   }).reverse();
-  return { enabled: true, archivePath: artifactArchiveDir(config, artifact), sourceFile: artifact.file, versions };
+  return { enabled: true, archivePath: artifactArchiveDir(config, artifact), sourceFile: artifact.file, sourceExists: artifact.exists, versions };
 }
 
-async function resolveVersion(file, versionId) {
+async function resolveVersion(file, versionId, { allowMissing = false } = {}) {
   const config = await readConfig();
   if (!config.archiveRoot) throw new Error('Choose an archive folder first.');
-  const artifact = await artifactForFile(file);
+  const artifact = await (allowMissing ? knownArtifactForFile(file) : artifactForFile(file));
   const manifest = await readManifest(config, artifact);
-  if (path.resolve(manifest.sourceFile) !== artifact.file) throw new Error('Archive manifest does not match this artifact.');
   const version = manifest.versions.find((item) => item.id === versionId);
   if (!version) throw new Error('That archived version could not be found.');
   const artifactDir = artifactArchiveDir(config, artifact);
@@ -687,16 +732,40 @@ async function resolveVersion(file, versionId) {
 }
 
 async function restoreVersion(file, versionId) {
-  const resolved = await resolveVersion(file, versionId);
+  const resolved = await resolveVersion(file, versionId, { allowMissing: true });
   return queueArtifactOperation(resolved.artifact, async () => {
     const { config, artifact, version, archivedFile } = resolved;
     const sourceDir = path.dirname(artifact.file);
+    // Recreate only the HTML, within an existing ordinary source directory.
+    // Check the project/.lavish ancestry too: localPathStatus starts at sourceDir
+    // and cannot detect a directory replaced by a symlink above that boundary.
+    const sourceRoot = projectRootFor(artifact.file) || sourceDir;
+    const directoryStat = async (directory) => lstat(directory).catch((error) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    const rootStat = await directoryStat(sourceRoot);
+    if (!rootStat) throw new Error('The source directory no longer exists.');
+    if (rootStat.isSymbolicLink() || await localPathStatus(sourceRoot, sourceDir) === 'symlink') {
+      throw new Error('Cannot restore through a symlinked source directory.');
+    }
+    if (!rootStat.isDirectory() || !(await directoryStat(sourceDir))?.isDirectory()) throw new Error('The source directory no longer exists.');
+    const sourceStat = await lstat(artifact.file).catch((error) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (sourceStat && !sourceStat.isFile()) throw new Error('Cannot restore a symlinked or non-file HTML source.');
+    artifact.exists = Boolean(sourceStat);
+    resolved.sourceRecreated = !artifact.exists;
     const archived = await collectBundle(archivedFile, version.supplementalAssets || []);
     const bundle = version.bundle || archived.bundle;
     // Legacy archives did not record missing states; restore only bytes they
     // actually contain rather than deleting files inferred missing today.
     const restorableStatuses = version.bundle ? ['file', 'directory', 'missing'] : ['file', 'directory'];
     const targets = bundle.filter((entry) => restorableStatuses.includes(entry.status));
+    if (!targets.some((entry) => entry.path === path.basename(artifact.file) && entry.status === 'file')) {
+      throw new Error('That archive does not contain the source HTML.');
+    }
     for (const entry of targets) {
       const destination = path.resolve(sourceDir, entry.path);
       if (destination === sourceDir || !insideFolder(sourceDir, destination)) throw new Error('Invalid archived asset path.');
@@ -725,10 +794,23 @@ async function restoreVersion(file, versionId) {
       } else {
         if (await localPathStatus(sourceDir, destination) === 'directory') await rm(destination, { recursive: true });
         await mkdir(path.dirname(destination), { recursive: true });
-        await writeFile(destination, archived.files.get(entry.path));
+        await writeFile(destination, archived.files.get(entry.path), destination === artifact.file && !artifact.exists ? { flag: 'wx' } : {});
       }
     }
-    await snapshotArtifactNow(config, artifact, 'restore', version.supplementalAssets || []);
+    artifact.exists = true;
+    const snapshot = await snapshotArtifactNow(config, artifact, 'restore', version.supplementalAssets || []);
+    knownArtifactsCache = { key: '', at: 0, value: null, pending: null };
+    let watcher = artifactWatchers.get(artifact.file);
+    if (watcher && watcher.archiveRoot !== config.archiveRoot) {
+      closeWatcherEntry(watcher);
+      artifactWatchers.delete(artifact.file);
+      watcher = null;
+    }
+    if (!watcher) {
+      watcher = { watchers: new Map(), timer: null, archiveRoot: config.archiveRoot };
+      artifactWatchers.set(artifact.file, watcher);
+    }
+    refreshArtifactWatchers(config, artifact, watcher, snapshot.watchDirs);
     return resolved;
   });
 }
@@ -1186,7 +1268,7 @@ const server = createServer(async (req, res) => {
       const input = await body(req);
       const restored = await restoreVersion(input.file, input.versionId);
       await recordEvent('restore', { artifactId: restored.artifact.id, label: 'Archived version restored', detail: restored.version.createdAt });
-      return json(res, 200, { ok: true, restoredAt: new Date().toISOString(), versionId: restored.version.id }, origin);
+      return json(res, 200, { ok: true, restoredAt: new Date().toISOString(), versionId: restored.version.id, sourceRecreated: restored.sourceRecreated }, origin);
     }
     return json(res, 404, { error: 'Not found.' }, origin);
   } catch (error) {

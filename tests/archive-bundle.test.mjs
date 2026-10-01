@@ -312,3 +312,145 @@ test('archive and restore refuse a symlinked source HTML without changing its ta
     assert.equal(await readFile(externalFile, 'utf8'), '<title>External HTML</title>');
   });
 });
+
+test('missing source history retains archived versions and restore recreates the bundle', async () => {
+  await fixture(async ({ sourceDir, file, html, get, post, history }) => {
+    await get('/library');
+    const baseline = (await history()).versions[0];
+    await rm(file);
+    const library = await get('/library'); // Removes the old watcher.
+    const versions = await history();
+    const missing = library.artifacts.find((artifact) => artifact.file === file);
+    assert.equal(missing.exists, false);
+    assert.equal(missing.versionCount, 1);
+    assert.equal(versions.sourceExists, false);
+    assert.equal(versions.versions.length, 1);
+    assert.equal(versions.versions[0].isCurrent, false);
+    await rm(path.join(sourceDir, 'assets'), { recursive: true });
+    await post('/versions/restore', { file, versionId: baseline.id });
+    assert.equal(await readFile(file, 'utf8'), html);
+    assert.equal(await readFile(path.join(sourceDir, 'assets/logo.png'), 'utf8'), 'logo-one');
+    assert.equal((await history()).sourceExists, true);
+    assert.equal((await history()).versions[0].isCurrent, true);
+    // No library scan between restore and atomic save: restore installs watchers.
+    const logo = path.join(sourceDir, 'assets/logo.png');
+    await writeFile(`${logo}.tmp`, 'after-recovery');
+    await rename(`${logo}.tmp`, logo);
+    const changed = await waitForVersion(history, 2);
+    assert.equal(changed.versions[0].reason, 'change');
+    assert.equal((await get('/library')).artifacts.find((artifact) => artifact.file === file).exists, true);
+  });
+});
+
+test('missing source can be restored directly without a prior library refresh', async () => {
+  await fixture(async ({ file, html, post, history }) => {
+    await post('/artifacts/snapshot');
+    const baseline = (await history()).versions[0];
+    await rm(file);
+    await post('/versions/restore', { file, versionId: baseline.id });
+    assert.equal(await readFile(file, 'utf8'), html);
+  });
+});
+
+test('archive manifests retain discovered missing artifacts without session history', async () => {
+  await fixture(async ({ directory, sourceDir, file, get, post, history }) => {
+    await writeFile(path.join(directory, 'state/state.json'), JSON.stringify({ sessions: {} }));
+    await writeFile(path.join(directory, 'config/config.json'), JSON.stringify({ projects: [{ path: path.dirname(sourceDir) }], archiveRoot: path.join(directory, 'archive') }));
+    await get('/library');
+    const baseline = (await history()).versions[0];
+    await rm(file);
+    const library = await get('/library');
+    assert.equal(library.artifacts.find((artifact) => artifact.file === file)?.exists, false);
+    assert.equal((await history()).versions.length, 1);
+    await post('/versions/restore', { file, versionId: baseline.id });
+    assert.equal((await get('/library')).artifacts.find((artifact) => artifact.file === file)?.exists, true);
+  });
+});
+
+test('missing sources remain unavailable to open, reveal and manual snapshot', async () => {
+  await fixture(async ({ file, api, post }) => {
+    await post('/artifacts/snapshot');
+    await rm(file);
+    for (const route of ['/artifacts/open', '/artifacts/reveal', '/artifacts/snapshot', '/versions/open']) {
+      const response = await fetch(`${api}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file, versionId: 'unused' }) });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /no longer exists/);
+    }
+  });
+});
+
+test('recovery refuses missing directories, source symlinks and non-file destinations', async () => {
+  await fixture(async ({ directory, sourceDir, file, api, post, history }) => {
+    await post('/artifacts/snapshot');
+    const baseline = (await history()).versions[0];
+    const restore = async () => {
+      const response = await fetch(`${api}/versions/restore`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file, versionId: baseline.id }) });
+      assert.equal(response.status, 400);
+      return (await response.json()).error;
+    };
+    await rm(file);
+    await mkdir(file);
+    assert.match(await restore(), /non-file/);
+    await rm(sourceDir, { recursive: true });
+    assert.match(await restore(), /ENOENT|source directory/);
+    await assert.rejects(readFile(file), { code: 'ENOENT' });
+    const externalDir = path.join(directory, 'external-source');
+    await mkdir(externalDir);
+    await symlink(externalDir, sourceDir);
+    assert.match(await restore(), /symlinked source directory/);
+    await assert.rejects(readFile(path.join(externalDir, path.basename(file))), { code: 'ENOENT' });
+  });
+});
+
+test('recovery refuses unknown paths and mismatched manifests without creating files', async () => {
+  await fixture(async ({ directory, sourceDir, file, api, get, post, history }) => {
+    await post('/artifacts/snapshot');
+    const baselineHistory = await history();
+    const baseline = baselineHistory.versions[0];
+    await rm(file);
+    const unknownPaths = [path.join(sourceDir, 'unknown.html'), path.join(directory, 'outside.html')];
+    for (const unknown of unknownPaths) {
+      assert.equal((await fetch(`${api}/artifacts/versions?file=${encodeURIComponent(unknown)}`)).status, 400);
+      const response = await fetch(`${api}/versions/restore`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: unknown, versionId: baseline.id }) });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /not a known Lavish artifact/);
+      await assert.rejects(readFile(unknown), { code: 'ENOENT' });
+    }
+    const manifestFile = path.join(baselineHistory.archivePath, 'manifest.json');
+    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+    manifest.sourceFile = unknownPaths[1];
+    await writeFile(manifestFile, JSON.stringify(manifest));
+    await get('/library');
+    assert.equal((await fetch(`${api}/artifacts/versions?file=${encodeURIComponent(file)}`)).status, 400);
+    assert.equal((await fetch(`${api}/artifacts/versions?file=${encodeURIComponent(unknownPaths[1])}`)).status, 400);
+    const response = await fetch(`${api}/versions/restore`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file, versionId: baseline.id }) });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /manifest does not match/);
+    await assert.rejects(readFile(file), { code: 'ENOENT' });
+  });
+});
+
+test('missing-source recovery keeps archive and asset paths within their folders', async () => {
+  await fixture(async ({ directory, file, api, post, history }) => {
+    await post('/artifacts/snapshot');
+    const baselineHistory = await history();
+    const manifestFile = path.join(baselineHistory.archivePath, 'manifest.json');
+    const original = JSON.parse(await readFile(manifestFile, 'utf8'));
+    await rm(file);
+    const outside = path.join(directory, 'outside.html');
+    await writeFile(outside, '<title>Keep outside bytes</title>');
+    for (const change of [
+      (version) => { version.file = outside; },
+      (version) => { version.bundle.push({ path: '../escaped.txt', status: 'file' }); },
+    ]) {
+      const manifest = structuredClone(original);
+      change(manifest.versions[0]);
+      await writeFile(manifestFile, JSON.stringify(manifest));
+      const response = await fetch(`${api}/versions/restore`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file, versionId: manifest.versions[0].id }) });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /archived copy|archived asset path/);
+      assert.equal(await readFile(outside, 'utf8'), '<title>Keep outside bytes</title>');
+      await assert.rejects(readFile(file), { code: 'ENOENT' });
+    }
+  });
+});
