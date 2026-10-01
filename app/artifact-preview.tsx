@@ -51,6 +51,8 @@ export default function ArtifactPreview({ id, title, exists }: { id: string; tit
         }
       }
     }
+    // A source recovered after being missing must leave the fallback state before the fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (exists) { setStatus((current) => current === 'missing' ? 'pending' : current); void load(); }
     else { setImage(null); setStatus('missing'); }
     return () => { controller.abort(); clearTimeout(timer); if (objectUrl) URL.revokeObjectURL(objectUrl); };
