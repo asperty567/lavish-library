@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
+import ArtifactPreview from './artifact-preview';
 import { apiFetch } from './api-client';
 import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
 
@@ -511,8 +512,7 @@ export default function Home() {
                 return (
                   <article className="artifact-card" key={artifact.id} style={{ '--card-index': index % 6 } as React.CSSProperties}>
                     <div className="card-preview">
-                      <div className="preview-chrome"><i /><i /><i /><span>{artifact.title}</span></div>
-                      <div className="preview-content"><span /><strong>{artifact.title}</strong><p>{artifact.description || 'A Lavish review surface'}</p><div><i /><i /><i /></div></div>
+                      <ArtifactPreview id={artifact.id} title={artifact.title} exists={artifact.exists} />
                       <div className="card-actions"><button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button></div>
                     </div>
                     <div className="card-body">

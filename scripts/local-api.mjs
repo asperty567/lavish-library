@@ -5,6 +5,7 @@ import { access, lstat, mkdir, readFile, readdir, rename, realpath, rm, stat, wr
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { createPreviewCache } from './artifact-previews.mjs';
 
 const PORT = Number(process.env.LAVISH_TRACKER_API_PORT || 4318);
 const requestedUiPort = Number(process.env.LAVISH_TRACKER_UI_PORT || 3000);
@@ -28,6 +29,16 @@ const LAVISH_PORT = Number.isInteger(requestedLavishPort) && requestedLavishPort
 const LAVISH_ORIGIN = `http://127.0.0.1:${LAVISH_PORT}`;
 const ARCHIVE_NAME = 'Lavish Library Archive';
 const API_TOKEN = randomBytes(32).toString('base64url');
+const previews = createPreviewCache({
+  directory: path.join(CONFIG_DIR, 'previews'),
+  collect: async (file) => {
+    const root = projectRootFor(file) || path.dirname(file);
+    if ((await lstat(root)).isSymbolicLink() || await localPathStatus(root, file) !== 'file') {
+      throw new Error('Preview source is not an ordinary local file.');
+    }
+    return collectBundle(file);
+  },
+});
 const artifactWatchers = new Map();
 const snapshotQueues = new Map();
 const legacyBundleShas = new Map();
@@ -620,6 +631,7 @@ async function buildLibrary() {
     }
   }
   syncArtifactWatchers(config, artifacts, watchDirsByFile);
+  for (const artifact of artifacts) if (artifact.exists) previews.schedule(artifact);
 
   const projects = [...projectMap.values(), ...(hasLoose ? [looseProject] : [])].map((project) => ({
     ...project,
@@ -1149,6 +1161,25 @@ const server = createServer(async (req, res) => {
       return json(res, 401, { error: 'The local browser session is not authorized.' }, origin);
     }
     if (req.method === 'GET' && url.pathname === '/api/library') return json(res, 200, await buildLibrary(), origin);
+    if (req.method === 'GET' && url.pathname === '/api/artifacts/preview') {
+      const id = url.searchParams.get('id');
+      const { artifactPaths } = await scanKnownArtifacts();
+      const file = [...artifactPaths].find((candidate) => idFor(candidate) === id);
+      if (!file) return json(res, 404, { status: 'failed', error: 'Unknown artifact.' }, origin);
+      const source = await lstat(file).catch(() => null);
+      if (!source) return json(res, 200, { status: 'missing' }, origin);
+      if (!source.isFile()) return json(res, 200, { status: 'failed' }, origin);
+      const preview = await previews.read(id);
+      if (!preview.png) return json(res, preview.status === 'pending' ? 202 : 200, { status: preview.status }, origin);
+      const etag = createHash('sha256').update(preview.png).digest('hex').slice(0, 16);
+      if (url.searchParams.get('etag') === etag) return json(res, 200, { status: 'unchanged', etag, stale: preview.stale }, origin);
+      res.writeHead(200, {
+        'content-type': 'image/png', 'cache-control': 'no-store',
+        'x-lavish-preview-stale': String(preview.stale), 'x-lavish-preview-etag': etag, vary: 'origin',
+        ...(origin ? { 'access-control-allow-origin': origin, 'access-control-expose-headers': 'x-lavish-preview-stale, x-lavish-preview-etag' } : {}),
+      });
+      return res.end(preview.png);
+    }
     if (req.method === 'GET' && url.pathname === '/api/insights') return json(res, 200, await buildInsights(Number(url.searchParams.get('days') || 90)), origin);
     if (req.method === 'GET' && url.pathname === '/api/artifacts/versions') return json(res, 200, await versionsFor(url.searchParams.get('file')), origin);
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, app: 'lavish-tracker' }, origin);
