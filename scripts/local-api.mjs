@@ -1171,10 +1171,12 @@ const server = createServer(async (req, res) => {
       if (!source.isFile()) return json(res, 200, { status: 'failed' }, origin);
       const preview = await previews.read(id);
       if (!preview.png) return json(res, preview.status === 'pending' ? 202 : 200, { status: preview.status }, origin);
+      const etag = createHash('sha256').update(preview.png).digest('hex').slice(0, 16);
+      if (url.searchParams.get('etag') === etag) return json(res, 200, { status: 'unchanged', etag, stale: preview.stale }, origin);
       res.writeHead(200, {
         'content-type': 'image/png', 'cache-control': 'no-store',
-        'x-lavish-preview-stale': String(preview.stale), vary: 'origin',
-        ...(origin ? { 'access-control-allow-origin': origin, 'access-control-expose-headers': 'x-lavish-preview-stale' } : {}),
+        'x-lavish-preview-stale': String(preview.stale), 'x-lavish-preview-etag': etag, vary: 'origin',
+        ...(origin ? { 'access-control-allow-origin': origin, 'access-control-expose-headers': 'x-lavish-preview-stale, x-lavish-preview-etag' } : {}),
       });
       return res.end(preview.png);
     }

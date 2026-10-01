@@ -512,7 +512,7 @@ export default function Home() {
                 return (
                   <article className="artifact-card" key={artifact.id} style={{ '--card-index': index % 6 } as React.CSSProperties}>
                     <div className="card-preview">
-                      <ArtifactPreview key={library?.scannedAt} id={artifact.id} title={artifact.title} exists={artifact.exists} scannedAt={library?.scannedAt ?? ''} />
+                      <ArtifactPreview id={artifact.id} title={artifact.title} exists={artifact.exists} />
                       <div className="card-actions"><button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button></div>
                     </div>
                     <div className="card-body">
