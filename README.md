@@ -73,6 +73,12 @@ The library health check uses `LAVISH_AXI_PORT` (default `4387`), matching the p
 
 Open [http://localhost:3000](http://localhost:3000). The library refreshes when the page loads and whenever you press the refresh button.
 
+Library cards capture the artifact's first 1200 × 750 pixels locally using an installed Chrome or Chromium. No browser download is bundled: the small `puppeteer-core` driver uses Chrome on macOS or common Chromium/Chrome locations on Linux. Set `LAVISH_TRACKER_BROWSER` to the executable path for another installation. Without a working browser, cards show **Preview unavailable** and opening/history continue to work.
+
+Captures run one at a time in the companion's background queue. PNGs are cached privately in the companion config directory (`~/.lavish-tracker/previews` by default), keyed by the HTML and bounded local dependency bundle. Refreshing the library or its 30-second reconciliation checks for edits, including CSS/image changes. Cards keep the earlier image marked **Updating preview…** until recapture finishes; a failed capture clears it to the fallback. Unchanged failures are retried after one minute on a later scan. Missing sources show **Source file missing**.
+
+The capture browser uses a fresh temporary profile and receives only collected in-memory local bytes through request interception. Remote resources, parent-folder paths, asset symlinks, service workers, embedded frames, and network connections are blocked. Local inline/collected scripts can render the artifact; previews relying on remote resources or uncollected dynamic dependencies may look incomplete. The UI retrieves PNGs using the existing browser session token, addressed only by a known artifact ID.
+
 To use another local UI port, set it explicitly for both services:
 
 ```bash
