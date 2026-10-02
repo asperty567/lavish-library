@@ -450,6 +450,13 @@ async function snapshotArtifactNow(config, artifact, reason = 'scan', supplement
   if (!config.archiveRoot || !artifact.exists) return null;
   const collected = await collectBundle(artifact.file, supplementalAssets);
   const { html, bundle, bundleSha256, watchDirs } = collected;
+  // Arm newly discovered dependency directories before publishing this version.
+  // A history reader can edit them as soon as the manifest rename is visible,
+  // even before that rename's completion resumes this snapshot operation.
+  const watcher = artifactWatchers.get(artifact.file);
+  if (watcher?.archiveRoot === config.archiveRoot) {
+    refreshArtifactWatchers(config, artifact, watcher, watchDirs);
+  }
   const contentSha = sha256(collected.htmlBytes);
   const manifest = await readManifest(config, artifact);
   const latest = manifest.versions.at(-1);
@@ -535,8 +542,7 @@ function refreshArtifactWatchers(config, artifact, entry, watchDirs) {
         entry.timer = setTimeout(async () => {
           if (artifactWatchers.get(artifact.file) !== entry) return;
           try {
-            const snapshot = await snapshotArtifact(config, artifact, 'change');
-            if (snapshot) refreshArtifactWatchers(config, artifact, entry, snapshot.watchDirs);
+            await snapshotArtifact(config, artifact, 'change');
           } catch { /* Reconciliation retries inaccessible files/directories. */ }
         }, 700);
       });

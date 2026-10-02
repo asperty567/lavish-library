@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-async function fixture(run) {
+async function fixture(run, { pauseAfterVersion } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'lavish-bundle-'));
   const sourceDir = path.join(directory, 'project', '.lavish');
   const stateDir = path.join(directory, 'state');
@@ -28,10 +28,34 @@ async function fixture(run) {
   await new Promise((resolve) => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port;
   await new Promise((resolve) => socket.close(resolve));
-  const service = spawn(process.execPath, ['scripts/local-api.mjs'], {
+  const serviceArgs = [];
+  if (pauseAfterVersion) {
+    // Hold the manifest rename's completion after its bytes become observable.
+    // IPC lets the test delete a dependency in that window without a timed sleep.
+    const preload = path.join(directory, 'pause-manifest.mjs');
+    await writeFile(preload, `
+      import fs from 'node:fs/promises';
+      import { once } from 'node:events';
+      import { syncBuiltinESMExports } from 'node:module';
+      const rename = fs.rename;
+      fs.rename = async (source, destination) => {
+        await rename(source, destination);
+        if (!destination.endsWith('/manifest.json')) return;
+        const manifest = JSON.parse(await fs.readFile(destination, 'utf8'));
+        if (manifest.versions.length !== ${pauseAfterVersion}) return;
+        const resumed = once(process, 'message');
+        process.send('manifest-published');
+        await resumed;
+      };
+      syncBuiltinESMExports();
+    `);
+    serviceArgs.push('--import', preload);
+  }
+  const service = spawn(process.execPath, [...serviceArgs, 'scripts/local-api.mjs'], {
     env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_AXI_BIN: '/usr/bin/true' },
-    stdio: 'ignore',
+    stdio: pauseAfterVersion ? ['ignore', 'ignore', 'ignore', 'ipc'] : 'ignore',
   });
+  const publicationPaused = pauseAfterVersion ? once(service, 'message') : null;
   const exited = once(service, 'exit');
   const api = `http://127.0.0.1:${port}/api`;
   const get = async (route) => {
@@ -52,7 +76,7 @@ async function fixture(run) {
       try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch { /* Starting. */ }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    await run({ directory, sourceDir, file, html, api, get, post, history });
+    await run({ directory, sourceDir, file, html, api, get, post, history, publicationPaused, resumePublication: () => service.send('resume') });
   } finally {
     service.kill('SIGTERM');
     await exited;
@@ -88,7 +112,7 @@ test('reconciliation archives asset-only edits and current compares the complete
 });
 
 test('directory watchers archive nested assets and survive atomic replacement', async () => {
-  await fixture(async ({ sourceDir, get, history }) => {
+  await fixture(async ({ sourceDir, get, history, publicationPaused, resumePublication }) => {
     await get('/library');
     const icon = path.join(sourceDir, 'assets/nested/icon.png');
     await writeFile(`${icon}.tmp`, 'icon-two');
@@ -106,10 +130,16 @@ test('directory watchers archive nested assets and survive atomic replacement', 
     await writeFile(path.join(sourceDir, 'assets/nested/new/deep.png'), 'new-dependency');
     result = await waitForVersion(history, 5);
     assert.equal(result.versions[0].reason, 'change');
+    assert.equal(result.versions[0].isCurrent, true);
+    assert.equal((await publicationPaused)[0], 'manifest-published');
+    // Delete while version 5 is visible but its publication call is still pending.
+    // The new dependency directory must already be watched at this point.
     await rm(path.join(sourceDir, 'assets/nested/new/deep.png'));
+    resumePublication();
     result = await waitForVersion(history, 6);
+    assert.equal(result.versions[0].reason, 'change');
     assert(result.versions[0].bundle.some((entry) => entry.path === 'assets/nested/new/deep.png' && entry.status === 'missing'));
-  });
+  }, { pauseAfterVersion: 5 });
 });
 
 test('restore snapshots newer asset bytes, including assets omitted by current HTML', async () => {
