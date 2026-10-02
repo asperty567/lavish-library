@@ -382,7 +382,6 @@ export default function Home() {
   const currentProject = library?.projects.find((project) => project.id === selectedProject);
   const liveCount = library?.artifacts.filter((artifact) => artifact.sessionStatus === 'open').length ?? 0;
   const emptyReason = getLibraryEmptyReason(library?.artifacts ?? [], selectedProject);
-  const hasFilters = query.trim().length > 0 || statusFilter !== 'all';
 
   function clearSearchAndFilters() {
     setQuery('');
@@ -520,7 +519,6 @@ export default function Home() {
               </> : emptyReason === 'project' ? <>
                 <h2>No lavishes in this project yet</h2>
                 <p>Create a <code>.lavish</code> artifact in this project folder and refresh.</p>
-                {hasFilters && <button onClick={clearSearchAndFilters}>Clear search and filters</button>}
                 <button onClick={() => selectProject('all')}>View all projects</button>
               </> : <>
                 <h2>No matching lavishes</h2>
