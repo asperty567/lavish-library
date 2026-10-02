@@ -614,20 +614,28 @@ async function buildLibrary() {
 
   let totalVersions = 0;
   let protectedArtifacts = 0;
+  let failedArtifacts = 0;
   const watchDirsByFile = new Map();
   if (config.archiveRoot) {
     for (const artifact of artifacts) {
+      let manifest;
+      let latestProtected = false;
       try {
         const snapshot = artifact.exists ? await snapshotArtifact(config, artifact, 'scan') : null;
-        const manifest = snapshot?.manifest || await readManifest(config, artifact);
+        manifest = snapshot?.manifest || await readManifest(config, artifact);
         if (snapshot) watchDirsByFile.set(artifact.file, snapshot.watchDirs);
-        artifact.versionCount = manifest?.versions.length || 0;
-        artifact.lastBackedUpAt = manifest?.versions.at(-1)?.createdAt || null;
-        totalVersions += artifact.versionCount;
-        if (artifact.versionCount > 0) protectedArtifacts += 1;
+        latestProtected = Boolean(snapshot);
       } catch (error) {
         artifact.backupError = error instanceof Error ? error.message : 'Backup failed';
+        failedArtifacts += 1;
+        // A failed update does not erase earlier successful copies. Read their
+        // metadata separately without treating them as protection of this scan.
+        manifest = await readManifest(config, artifact).catch(() => null);
       }
+      artifact.versionCount = manifest?.versions.length || 0;
+      artifact.lastBackedUpAt = manifest?.versions.at(-1)?.createdAt || null;
+      totalVersions += artifact.versionCount;
+      if (latestProtected && artifact.versionCount > 0) protectedArtifacts += 1;
     }
   }
   syncArtifactWatchers(config, artifacts, watchDirsByFile);
@@ -648,6 +656,8 @@ async function buildLibrary() {
       path: archiveHome(config),
       totalVersions,
       protectedArtifacts,
+      failedArtifacts,
+      unprotectedArtifacts: artifacts.length - protectedArtifacts,
     },
     scannedAt: new Date().toISOString(),
   };
