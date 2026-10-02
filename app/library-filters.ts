@@ -15,11 +15,11 @@ export type LibraryFilter = {
 
 export type LibraryFilterScope = Omit<LibraryFilter, 'statusFilter'>;
 
-export function filterLibraryArtifacts<T extends FilterableArtifact>(artifacts: T[], filter: LibraryFilter) {
+export function filterLibraryArtifacts<T extends FilterableArtifact>(artifacts: T[], filter: LibraryFilter, retainActionContext?: (artifact: T) => boolean) {
   const needle = filter.query.trim().toLowerCase();
   return artifacts.filter((artifact) => {
     const inProject = filter.selectedProject === 'all' || artifact.projectId === filter.selectedProject;
-    const hasStatus = filter.statusFilter === 'all'
+    const hasStatus = Boolean(retainActionContext?.(artifact)) || filter.statusFilter === 'all'
       || (filter.statusFilter === 'live' && artifact.sessionStatus === 'open' && filter.serverRunning)
       || (filter.statusFilter === 'discovered' && artifact.sessionStatus === 'discovered');
     return inProject && hasStatus && (!needle || `${artifact.title} ${artifact.description} ${artifact.file}`.toLowerCase().includes(needle));

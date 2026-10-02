@@ -33,6 +33,10 @@ Errors use `role=alert` next to the originating Trash button or confirm button.
 No new animation. Confirmation is explicit, never ends reviews on first click.
 Cancel performs no API mutation. Existing card transitions remain unchanged.
 The user sees failure in place and success as the card leaving the Library.
+Changing bulk selection invalidates its pending confirmation. Selection is
+disabled while a confirmed request is in flight. If ending succeeds but moving
+fails, retain the file's card and local error across a status-filter refresh;
+show its true ended status, and keep the confirmation available for retry.
 
 ## 7. Depth & Surface
 Preserve existing mixed tonal surfaces, neutral borders and card shadows.

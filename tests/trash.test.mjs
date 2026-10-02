@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { chmod, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import path from 'node:path';
@@ -66,4 +66,26 @@ test('confirmation renders refusal inside the same action group as its buttons',
   assert.match(html, /class="trash-confirm"/);
   assert.match(html, /role="alert">Fixture refusal<\/p><\/div>$/);
   assert.ok(html.indexOf('role="alert"') > html.indexOf('<button'));
+});
+
+test('a mover failure returns 409 after review end and retains the file in the catalog', async () => {
+  const f = await trashFixture({ apiPort: 45_000 + (process.pid % 1_000) });
+  try {
+    await chmod(f.trashDir, 0o000);
+    const response = await fetch(`${f.api}/api/artifacts/trash`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [f.id(f.files.live)], endReviews: true }),
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual((await response.json()).moved, []);
+    assert.equal((await f.readState()).sessions.live.status, 'ended');
+    await f.access(f.files.live);
+    const library = await (await fetch(`${f.api}/api/library`)).json();
+    const retained = library.artifacts.find((artifact) => artifact.id === f.id(f.files.live));
+    assert.equal(retained.exists, true);
+    assert.equal(retained.sessionStatus, 'ended');
+  } finally {
+    await chmod(f.trashDir, 0o700);
+    await f.close();
+  }
 });

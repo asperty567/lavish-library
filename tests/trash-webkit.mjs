@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { trashFixture } from './fixtures/trash-library.mjs';
 
@@ -71,9 +71,27 @@ for (const width of [1920, 390]) {
     await audit('refusal');
     await live.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.unroute('**/api/artifacts/trash');
+    // G3: real review-end succeeds, then the actual fixture mover fails.
+    await page.getByRole('button', { name: /^Live \d+$/ }).click();
     await live.getByRole('button', { name: 'Move Fixture live to Trash', exact: true }).click();
-    await live.getByRole('button', { name: 'End review and move to Trash', exact: true }).click();
+    await chmod(f.trashDir, 0o000);
+    try {
+      const failedMove = page.waitForResponse((response) => response.url().endsWith('/api/artifacts/trash') && response.request().method() === 'POST');
+      await live.getByRole('button', { name: 'End review and move to Trash', exact: true }).click();
+      const response = await failedMove;
+      assert.equal(response.status(), 409);
+      assert.deepEqual((await response.json()).moved, []);
+      await live.getByRole('alert').waitFor();
+      await live.locator('.status-ended').waitFor();
+      await f.access(f.files.live);
+      assert.equal(Object.values((await f.readState()).sessions).find((session) => session.file === f.files.live).status, 'ended');
+      assert.equal(await page.locator('.filter-pills button.selected').innerText(), 'Live 1');
+      await audit('live-move-failure');
+    } finally { await chmod(f.trashDir, 0o700); }
+    // Retry without losing the ended card while the request is in flight.
+    await live.getByRole('group').getByRole('button', { name: 'Move to Trash', exact: true }).click();
     await live.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: /^All \d+$/ }).click();
     const ended = Object.values((await f.readState()).sessions).find((session) => session.file === f.files.live);
     assert.equal(ended.status, 'ended');
     assert.equal(ended.ended_by, 'user');
@@ -86,6 +104,30 @@ for (const width of [1920, 390]) {
     const bulk = page.getByRole('group', { name: 'Confirm move to Trash' });
     await bulk.waitFor();
     assert.match(await bulk.innerText(), /1 of 2/);
+    // G4: clearing or changing selection must disarm the old targets.
+    const submitted = [];
+    const recordTrash = (request) => { if (request.url().endsWith('/api/artifacts/trash') && request.method() === 'POST') submitted.push(request.postDataJSON()); };
+    page.on('request', recordTrash);
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await bulk.waitFor({ state: 'detached' });
+    assert.equal(await page.getByRole('checkbox', { name: /^Select Fixture /, checked: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'End review and move to Trash', exact: true }).count(), 0);
+    await audit('cleared-selection');
+    await page.getByRole('checkbox', { name: 'Select Fixture feedback', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Select Fixture finished', exact: true }).check();
+    await page.getByRole('button', { name: 'Move to Trash', exact: true }).click();
+    await bulk.waitFor();
+    await page.getByRole('checkbox', { name: 'Select Fixture finished', exact: true }).uncheck();
+    await bulk.waitFor({ state: 'detached' });
+    assert.deepEqual(submitted, []);
+    page.off('request', recordTrash);
+    await f.access(f.files.feedback);
+    await f.access(f.files.finished);
+    assert.equal(Object.values((await f.readState()).sessions).find((session) => session.file === f.files.feedback).status, 'open');
+    await audit('unselected-confirmation');
+    await page.getByRole('checkbox', { name: 'Select Fixture finished', exact: true }).check();
+    await page.getByRole('button', { name: 'Move to Trash', exact: true }).click();
+    await bulk.waitFor();
     await audit('bulk-confirmation');
     await bulk.getByRole('button', { name: 'End review and move to Trash', exact: true }).click();
     await page.getByRole('heading', { name: 'Fixture feedback', exact: true }).waitFor({ state: 'detached' });
@@ -96,7 +138,7 @@ for (const width of [1920, 390]) {
     await video.saveAs(path.join(evidence, `${width}-click-through.webm`));
     await browser.close();
     browser = null;
-    console.log(`PASS WebKit ${width}: cancel, local refusal, end-before-trash, bulk; overflow clean`);
+    console.log(`PASS WebKit ${width}: cancel, local refusal, real post-end 409 retained in Live, Clear/unselect disarm bulk, retry, bulk; overflow clean`);
   } finally {
     await browser?.close();
     const exited = once(proxy, 'exit');

@@ -55,6 +55,7 @@ export async function trashFixture({ installedReviews = false, uiPort = 46300, a
   // Reserve a port for the installed daemon without ever using its live default.
   if (installedReviews) await new Promise((resolve) => review.close(resolve));
   const env = { ...process.env, LAVISH_TRACKER_API_PORT: String(apiPort), LAVISH_TRACKER_UI_PORT: String(uiPort),
+    LAVISH_TRACKER_PUBLIC_ORIGIN: '', LAVISH_TRACKER_PUBLIC_HOST: '',
     LAVISH_TRACKER_CONFIG_DIR: configDir, LAVISH_AXI_STATE_DIR: stateDir, LAVISH_TRACKER_DROP_DIR: '',
     LAVISH_TRACKER_TRASH_BIN: fakeTrash, TEST_TRASH_DIR: trashDir, TEST_STATE_FILE: stateFile,
     LAVISH_AXI_PORT: String(reviewPort), LAVISH_AXI_HOST: '127.0.0.1', LAVISH_AXI_LINK_HOST: '127.0.0.1',
