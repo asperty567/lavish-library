@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
 import ArtifactPreview from './artifact-preview';
+import BackupStatus, { isLatestProtected } from './backup-status';
 import { apiFetch } from './api-client';
 import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
 
@@ -67,6 +68,8 @@ type Library = {
     path: string | null;
     totalVersions: number;
     protectedArtifacts: number;
+    failedArtifacts: number;
+    unprotectedArtifacts: number;
   };
   scannedAt: string;
 };
@@ -128,6 +131,7 @@ export default function Home() {
   const [historyArtifact, setHistoryArtifact] = useState<Artifact | null>(null);
   const [history, setHistory] = useState<VersionHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [backingUp, setBackingUp] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const trackedSearchRef = useRef('');
 
@@ -136,8 +140,10 @@ export default function Home() {
     try {
       const response = await apiFetch('/library', { cache: 'no-store' });
       if (!response.ok) throw new Error('The local library service did not respond.');
-      setLibrary(await response.json());
+      const value: Library = await response.json();
+      setLibrary(value);
       setNotice('');
+      return value;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not load your library.');
     } finally {
@@ -332,19 +338,29 @@ export default function Home() {
     }
   }
 
-  async function createSnapshot() {
-    if (!historyArtifact) return;
-    setNotice(`Protecting “${historyArtifact.title}”…`);
+  async function retryBackup(artifact: Artifact, refreshHistory = false) {
+    setBackingUp((ids) => [...ids, artifact.id]);
+    setNotice(`Protecting “${artifact.title}”…`);
+    let retryError: string | null = null;
     try {
       const response = await apiFetch('/artifacts/snapshot', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: historyArtifact.file }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: artifact.file }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not create a snapshot.');
-      await Promise.all([loadLibrary(true), loadHistory(historyArtifact)]);
-      setNotice('Current version is protected.');
+      if (refreshHistory) await loadHistory(artifact);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not create a snapshot.');
+      retryError = error instanceof Error ? error.message : 'Could not create a snapshot.';
+    } finally {
+      // Reconcile warnings and summary after both failed and successful retries.
+      const refreshed = await loadLibrary(true);
+      setBackingUp((ids) => ids.filter((id) => id !== artifact.id));
+      if (refreshed) {
+        const current = refreshed.artifacts.find((item) => item.id === artifact.id);
+        setNotice(retryError ?? (current && isLatestProtected(current, refreshed.archive.enabled) ? 'Current version is protected.' : 'Latest content is not protected. Check the backup status and retry.'));
+      } else if (retryError) {
+        setNotice(retryError);
+      }
     }
   }
 
@@ -381,6 +397,7 @@ export default function Home() {
 
   const currentProject = library?.projects.find((project) => project.id === selectedProject);
   const liveCount = library?.artifacts.filter((artifact) => artifact.sessionStatus === 'open').length ?? 0;
+  const currentHistoryArtifact = library?.artifacts.find((artifact) => artifact.id === historyArtifact?.id) ?? historyArtifact;
 
   return (
     <main className="app-shell">
@@ -439,7 +456,7 @@ export default function Home() {
               <kbd>⌘ K</kbd>
             </label>
             <button className="icon-button" aria-label="Refresh library" onClick={() => void loadLibrary()}><Icon name="refresh" /></button>
-            <button className={`archive-button ${library?.archive?.enabled ? 'enabled' : ''}`} onClick={() => setShowArchive((value) => !value)}><Icon name="archive" /> {library?.archive?.enabled ? `${library.archive.totalVersions} versions` : 'Set up archive'}</button>
+            <button className={`archive-button ${library?.archive?.enabled ? 'enabled' : ''} ${library?.archive?.failedArtifacts ? 'failed' : ''}`} onClick={() => setShowArchive((value) => !value)}><Icon name="archive" /> {library?.archive?.enabled ? `${library.archive.totalVersions} versions${library.archive.failedArtifacts ? ` · ${library.archive.failedArtifacts} failed` : ''}` : 'Set up archive'}</button>
             <button className="add-button" onClick={() => setShowAdd((value) => !value)}><Icon name="plus" /> Add folder</button>
           </> : <>
             <div className="insights-topbar-copy"><strong>{section === 'observatory' ? 'Signal Observatory' : 'Lavish Review'}</strong><span>{section === 'observatory' ? 'Explore local evidence and evolving plans' : 'Reflect, respond, and choose what comes next'}</span></div>
@@ -458,7 +475,7 @@ export default function Home() {
             </div>
             {library?.archive?.enabled ? (
               <>
-                <div className="archive-stats"><span><strong>{library.archive.protectedArtifacts}</strong> protected</span><span><strong>{library.archive.totalVersions}</strong> versions</span></div>
+                <div className="archive-stats" aria-live="polite"><span><strong>{library.archive.protectedArtifacts}</strong> latest protected</span><span><strong>{library.archive.unprotectedArtifacts}</strong> unprotected</span><span className={library.archive.failedArtifacts ? 'failed' : ''}><strong>{library.archive.failedArtifacts}</strong> failed</span><span><strong>{library.archive.totalVersions}</strong> versions</span></div>
                 <div className="archive-panel-actions"><button onClick={() => void revealArchive()}>Show in Finder</button><button onClick={() => void chooseArchiveFolder()}>Change folder</button><button className="quiet-danger" onClick={() => void disableArchive()}>Pause</button></div>
               </>
             ) : <button className="archive-choose" onClick={() => void chooseArchiveFolder()}><Icon name="folder" /> Choose archive folder</button>}
@@ -518,7 +535,8 @@ export default function Home() {
                     <div className="card-body">
                       <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
                       <p className="description">{artifact.description || artifact.relativePath}</p>
-                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span><button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
+                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span><button className={`history-chip ${isLatestProtected(artifact, Boolean(library?.archive?.enabled)) ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
+                      <BackupStatus artifact={artifact} enabled={Boolean(library?.archive?.enabled)} busy={backingUp.includes(artifact.id)} onRetry={() => void retryBackup(artifact)} />
                     </div>
                   </article>
                 );
@@ -540,7 +558,8 @@ export default function Home() {
               <div className="history-empty"><div><Icon name="archive" /></div><h3>No archive folder yet</h3><p>Choose a folder to create a baseline and start tracking every future revision.</p><button onClick={() => void chooseArchiveFolder()}>Choose archive folder</button></div>
             ) : (
               <>
-                <div className="history-summary"><div><strong>{history.versions.length}</strong><span>saved versions</span></div><button disabled={history.sourceExists === false} onClick={() => void createSnapshot()}><Icon name="plus" /> Back up now</button></div>
+                <div className="history-summary"><div><strong>{history.versions.length}</strong><span>saved versions</span></div><button disabled={history.sourceExists === false || backingUp.includes(historyArtifact.id)} onClick={() => void retryBackup(historyArtifact, true)}><Icon name="plus" /> {backingUp.includes(historyArtifact.id) ? 'Backing up…' : 'Back up now'}</button></div>
+                {currentHistoryArtifact && <BackupStatus artifact={currentHistoryArtifact} enabled={Boolean(library?.archive?.enabled)} />}
                 {history.sourceExists === false && <p className="history-loading">The source file is missing. Restore a saved version to recover it.</p>}
                 <div className="timeline">
                   {history.versions.map((version, index) => (
