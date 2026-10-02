@@ -1,0 +1,10 @@
+
+> lavish-tracker@0.3.1 lint
+> eslint . --ignore-pattern dist --ignore-pattern .next
+
+
+/Users/admin/.omo/worktrees/lavish-trash/app/page.tsx
+  110:10  warning  'isLoopbackHost' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 1 problem (0 errors, 1 warning)
+

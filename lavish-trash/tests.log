@@ -1,0 +1,36 @@
+
+> lavish-tracker@0.3.1 test
+> node --test tests/*.test.mjs
+
+✔ bootstraps a browser token and renews it once after a service restart (57.7395ms)
+✔ uses the Tailscale host for the companion API when the UI is not on localhost (1.51125ms)
+✔ filters artifacts by project and status (0.996083ms)
+✔ counts each selector within the selected project and search (0.15175ms)
+✔ reports no live artifacts while the Lavish server is stopped (0.083083ms)
+✔ builds a local library with known session activity (158.448ms)
+✔ opens by artifact id or file path with a canonical 4389 session URL (363.720667ms)
+✔ refuses a fabricated Open link when Lavish does not establish a session (464.408084ms)
+✔ records search, value, and outcome signals in insights (37.666167ms)
+✔ never enables foreground-time tracking (2.94225ms)
+✔ rejects hostile browser origins and requires a session token (63.874792ms)
+✔ allows the configured Tailscale UI origin and Serve host (524.680709ms)
+✔ ignores archive side effects when resolving one artifact (202.108834ms)
+✔ rejects HTML files outside the known Lavish library (4.809084ms)
+✔ library refresh updates the cached artifact allowlist (9.8875ms)
+✔ indexes Desktop drop files and opens them over HTTP for the tailnet (299.205708ms)
+✔ hides discovered drop copies when a live session has the same title (353.698042ms)
+✔ excludes Medik8 packshot drops and product-code photo titles from the catalog (141.808834ms)
+✔ bulk trash validates selection, ends confirmed reviews first, and retains tombstones (833.838792ms)
+✔ confirmation renders refusal inside the same action group as its buttons (65.132042ms)
+✔ listens on :3000 by default (1.727ms)
+✔ adds loopback :3000 when a stale UI_PORT is 3007 and PUBLIC_ORIGIN is the catalog (0.207708ms)
+✔ does not steal :3000 when PUBLIC_ORIGIN is unset (0.131708ms)
+✔ does not bind :443 when PUBLIC_ORIGIN has no explicit port (0.129875ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2747.279042

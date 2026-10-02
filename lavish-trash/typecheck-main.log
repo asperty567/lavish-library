@@ -1,0 +1,31 @@
+app/api-client.ts(17,36): error TS18046: 'result' is of type 'unknown'.
+app/api-client.ts(17,79): error TS18046: 'result' is of type 'unknown'.
+app/api-client.ts(18,16): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(70,41): error TS18046: 'value' is of type 'unknown'.
+app/insights-view.tsx(71,19): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<Insights | null>'.
+app/insights-view.tsx(85,43): error TS18046: 'value' is of type 'unknown'.
+app/insights-view.tsx(88,38): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<Insights | null>'.
+app/insights-view.tsx(109,41): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(124,41): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(137,40): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(147,40): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(148,64): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(158,40): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(159,16): error TS18046: 'result' is of type 'unknown'.
+app/insights-view.tsx(160,28): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(160,35): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<Library | null>'.
+app/page.tsx(229,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(246,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(264,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(265,18): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(266,30): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(288,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(308,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(320,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(334,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(345,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(358,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(359,18): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'SetStateAction<VersionHistory | null>'.
+app/page.tsx(375,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(390,41): error TS18046: 'result' is of type 'unknown'.
+app/page.tsx(405,41): error TS18046: 'result' is of type 'unknown'.

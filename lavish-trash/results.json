@@ -1,0 +1,98 @@
+[
+  {
+    "width": 1920,
+    "state": "library",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 1920,
+    "state": "confirmation",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 1920,
+    "state": "refusal",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 1920,
+    "state": "done",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 1920,
+    "state": "bulk-confirmation",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 1920,
+    "state": "bulk-done",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "library",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "confirmation",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "refusal",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "done",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "bulk-confirmation",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  },
+  {
+    "width": 390,
+    "state": "bulk-done",
+    "overflow": {
+      "document": false,
+      "issues": []
+    }
+  }
+]
