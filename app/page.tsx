@@ -358,6 +358,8 @@ export default function Home() {
       if (refreshed) {
         const current = refreshed.artifacts.find((item) => item.id === artifact.id);
         setNotice(retryError ?? (current && isLatestProtected(current, refreshed.archive.enabled) ? 'Current version is protected.' : 'Latest content is not protected. Check the backup status and retry.'));
+      } else if (retryError) {
+        setNotice(retryError);
       }
     }
   }
@@ -557,7 +559,7 @@ export default function Home() {
             ) : (
               <>
                 <div className="history-summary"><div><strong>{history.versions.length}</strong><span>saved versions</span></div><button disabled={history.sourceExists === false || backingUp.includes(historyArtifact.id)} onClick={() => void retryBackup(historyArtifact, true)}><Icon name="plus" /> {backingUp.includes(historyArtifact.id) ? 'Backing up…' : 'Back up now'}</button></div>
-                {currentHistoryArtifact && <BackupStatus artifact={currentHistoryArtifact} enabled={Boolean(library?.archive?.enabled)} busy={backingUp.includes(historyArtifact.id)} onRetry={() => void retryBackup(historyArtifact, true)} />}
+                {currentHistoryArtifact && <BackupStatus artifact={currentHistoryArtifact} enabled={Boolean(library?.archive?.enabled)} />}
                 {history.sourceExists === false && <p className="history-loading">The source file is missing. Restore a saved version to recover it.</p>}
                 <div className="timeline">
                   {history.versions.map((version, index) => (

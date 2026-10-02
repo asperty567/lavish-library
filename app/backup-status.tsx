@@ -13,8 +13,8 @@ export function isLatestProtected(artifact: BackupArtifact, enabled: boolean) {
 export default function BackupStatus({ artifact, enabled, busy, onRetry }: {
   artifact: BackupArtifact;
   enabled: boolean;
-  busy: boolean;
-  onRetry: () => void;
+  busy?: boolean;
+  onRetry?: () => void;
 }) {
   const failed = enabled && Boolean(artifact.backupError);
   const protectedLatest = isLatestProtected(artifact, enabled);
@@ -24,7 +24,7 @@ export default function BackupStatus({ artifact, enabled, busy, onRetry }: {
       <strong>{label}</strong>
       {failed && <p>Latest content is not protected. {artifact.backupError} Check archive folder access, then retry.</p>}
       {artifact.lastBackedUpAt ? <p>Last successful backup: <time dateTime={artifact.lastBackedUpAt}>{new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(artifact.lastBackedUpAt))}</time>{failed && ' · Earlier saved copy only.'}</p> : enabled && failed ? <p>Never backed up · no saved copy yet.</p> : null}
-      {enabled && artifact.exists && !protectedLatest && <button className="backup-retry" disabled={busy} onClick={onRetry} aria-label={`${failed ? 'Retry backup' : 'Back up now'} for ${artifact.title}`}>{busy ? 'Backing up…' : failed ? 'Retry backup' : 'Back up now'}</button>}
+      {onRetry && enabled && artifact.exists && !protectedLatest && <button className="backup-retry" disabled={busy} onClick={onRetry} aria-label={`${failed ? 'Retry backup' : 'Back up now'} for ${artifact.title}`}>{busy ? 'Backing up…' : failed ? 'Retry backup' : 'Back up now'}</button>}
     </div>
   );
 }
