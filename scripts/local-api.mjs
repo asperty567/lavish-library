@@ -703,6 +703,18 @@ async function artifactForFile(file) {
   return artifact;
 }
 
+// Read declarations from the saved bytes, including archives made before
+// this feature. Never attribute today's declarations to an older snapshot.
+async function archivedRevisionContext(directory, version) {
+  try {
+    const archivedFile = path.resolve(directory, version.file);
+    if (!insideFolder(directory, archivedFile) || await localPathStatus(directory, archivedFile) !== 'file') return [];
+    return revisionContext(await readFile(archivedFile, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
 async function versionsFor(file) {
   const artifact = await knownArtifactForFile(file);
   const config = await readConfig();
@@ -720,24 +732,19 @@ async function versionsFor(file) {
     const archivedSha = await archivedBundleSha(config, artifact, version).catch(() => null);
     if (archivedSha === currentSha) currentVersionIndex = index;
   }
-  const versions = await Promise.all(manifest.versions.map(async (version, index) => {
+  const directory = artifactArchiveDir(config, artifact);
+  const versions = [];
+  for (const [index, version] of manifest.versions.entries()) {
     const previous = manifest.versions[index - 1];
-    // Read declarations from the saved bytes, including archives made before
-    // this feature. Never attribute today's declarations to an older snapshot.
-    const directory = artifactArchiveDir(config, artifact);
-    const archivedFile = path.resolve(directory, version.file);
-    const context = insideFolder(directory, archivedFile) && await localPathStatus(directory, archivedFile) === 'file'
-      ? revisionContext(await readFile(archivedFile, 'utf8').catch(() => '')) : [];
-    return {
+    versions.unshift({
       ...version,
-      revisionContext: context,
+      revisionContext: await archivedRevisionContext(directory, version),
       isCurrent: index === currentVersionIndex,
       sizeDelta: previous ? version.size - previous.size : 0,
       lineDelta: previous ? version.lineCount - previous.lineCount : 0,
-    };
-  }));
-  versions.reverse();
-  return { enabled: true, archivePath: artifactArchiveDir(config, artifact), sourceFile: artifact.file, sourceExists: artifact.exists, versions };
+    });
+  }
+  return { enabled: true, archivePath: directory, sourceFile: artifact.file, sourceExists: artifact.exists, versions };
 }
 
 async function resolveVersion(file, versionId, { allowMissing = false } = {}) {

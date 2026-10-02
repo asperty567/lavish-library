@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
 import ArtifactPreview from './artifact-preview';
 import { apiFetch } from './api-client';
-import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
+import { countLibraryFilters, filterLibraryArtifacts, visibleArtifactFailures } from './library-filters';
 
 type Project = {
   id: string;
@@ -95,7 +95,6 @@ function formatSize(bytes: number) {
 
 function statusLabel(artifact: Artifact, serverRunning: boolean) {
   if (!artifact.exists) return 'Missing';
-  if (artifact.artifactFailures?.length) return 'Review failed';
   if (artifact.sessionStatus === 'ended') return 'Review ended';
   if (artifact.pendingPrompts > 0 || artifact.sessionStatus === 'feedback') return 'Feedback waiting';
   if (artifact.sessionStatus === 'open' && serverRunning) return 'Live';
@@ -525,6 +524,7 @@ export default function Home() {
               {artifacts.map((artifact, index) => {
                 const project = library?.projects.find((item) => item.id === artifact.projectId);
                 const label = statusLabel(artifact, Boolean(library?.server.running));
+                const failures = visibleArtifactFailures(artifact);
                 return (
                   <article className="artifact-card" key={artifact.id} style={{ '--card-index': index % 6 } as React.CSSProperties}>
                     <div className="card-preview">
@@ -532,8 +532,8 @@ export default function Home() {
                       <div className="card-actions"><button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button></div>
                     </div>
                     <div className="card-body">
-                      <div className="card-heading"><div><span className={`status ${artifact.artifactFailures?.length ? 'status-failed' : `status-${artifact.sessionStatus}`}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
-                      {!!artifact.artifactFailures?.length && <details className="artifact-warning"><summary>Lavish reported a review failure</summary><p>{library?.server.running ? 'The server is running, but this artifact or a local asset could not load.' : 'This artifact or a local asset could not load in Lavish.'} This is the last recorded failure; server health does not confirm a successful render.</p><ul>{artifact.artifactFailures.map((failure, index) => <li key={index}><strong>{failure.kind === 'artifact-unavailable' ? 'Artifact unavailable' : 'Local asset unavailable'}</strong>{failure.detail && <span>{failure.detail}</span>}</li>)}</ul></details>}
+                      <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span>{!!failures.length && <span className="status status-failed">Review failed</span>}<h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
+                      {!!failures.length && <details className="artifact-warning"><summary>Lavish reported a review failure</summary><p>{library?.server.running ? 'The server is running, but this artifact or a local asset could not load.' : 'This artifact or a local asset could not load in Lavish.'} This is the last recorded failure; server health does not confirm a successful render.</p><ul>{failures.map((failure, index) => <li key={index}><strong>{failure.kind === 'artifact-unavailable' ? 'Artifact unavailable' : 'Local asset unavailable'}</strong>{failure.detail && <span>{failure.detail}</span>}</li>)}</ul></details>}
                       <p className="description">{artifact.description || artifact.relativePath}</p>
                       <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span><button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
                     </div>

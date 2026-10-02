@@ -105,7 +105,8 @@ kbd { padding: 3px 6px; border: 1px solid #e1dbd2; border-radius: 5px; color: #9
 .artifact-grid, .loading-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 25px; }
 .artifact-card { min-width: 0; overflow: hidden; border: 1px solid #e4ddd4; border-radius: 15px; background: #fff; box-shadow: 0 2px 3px rgb(42 34 28 / 3%), 0 11px 30px rgb(42 34 28 / 4%); transition: transform .2s ease, box-shadow .2s ease; }
 .artifact-card:hover { transform: translateY(-3px); box-shadow: 0 5px 10px rgb(42 34 28 / 5%), 0 18px 42px rgb(42 34 28 / 8%); }
-.status.status-failed { color: #91451f; background: #fff0e2; }
+.status.status-failed { margin-left: 8px; padding: 2px 6px; border-radius: 4px; color: #91451f; background: #fff0e2; }
+.status.status-failed::before { background: #c9652f; }
 .artifact-warning { margin: 10px 0; padding: 10px 12px; border: 1px solid #eacdb0; border-radius: 8px; background: #fff8ef; color: #784b2e; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .artifact-warning summary { cursor: pointer; font-weight: 650; }
 .artifact-warning p { margin: 8px 0; }

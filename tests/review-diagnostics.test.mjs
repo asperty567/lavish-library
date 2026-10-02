@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { artifactFailures, revisionContext, revealServerLog, serverLogPath } from '../scripts/review-diagnostics.mjs';
-import { countLibraryFilters, filterLibraryArtifacts } from '../app/library-filters.ts';
+import { countLibraryFilters, filterLibraryArtifacts, visibleArtifactFailures } from '../app/library-filters.ts';
 import { diagnosticsFixture } from './helpers/diagnostics-fixture.mjs';
 
 const failures = [
@@ -13,13 +13,11 @@ const failures = [
 const context = [{ id: 'r2', label: 'Clarify launch ownership', timestamp: '2026-10-02T00:00:00Z', summary: 'Named an owner for each launch task.' }];
 const html = (entries) => `<title>Launch review</title><script type="application/json" data-lavish-revisions>${JSON.stringify(entries)}</script><h1 data-lavish-revision="r2">Launch review</h1>`;
 const fixture = async (run, options) => {
-  const value = await diagnosticsFixture({ ...options, script: process.env.LAVISH_DIAGNOSTICS_TEST_API_SCRIPT });
+  const value = await diagnosticsFixture(options);
   try { await run(value); } finally { await value.close(); }
 };
 
-// These four tests also run against the pre-change companion for the regression record.
-const integration = test;
-integration('synthetic: a healthy server retains per-artifact fatal load and asset diagnostics', async () => {
+test('synthetic: a healthy server retains per-artifact fatal load and asset diagnostics', async () => {
   await fixture(async ({ api, session, writeState }) => {
     const library = await (await fetch(`${api}/library`)).json();
     assert.equal(library.server.running, true);
@@ -30,7 +28,7 @@ integration('synthetic: a healthy server retains per-artifact fatal load and ass
   }, { session: { artifact_failures: failures } });
 });
 
-integration('synthetic: revision context follows saved bytes rather than the current source', async () => {
+test('synthetic: revision context follows saved bytes rather than the current source', async () => {
   await fixture(async ({ api, file }) => {
     await fetch(`${api}/library`);
     await writeFile(file, html([{ ...context[0], id: 'r3', label: 'Update launch date' }]));
@@ -42,10 +40,19 @@ integration('synthetic: revision context follows saved bytes rather than the cur
     await rm(file);
     const missing = await (await fetch(`${api}/artifacts/versions?file=${encodeURIComponent(file)}`)).json();
     assert.deepEqual(missing.versions[1].revisionContext, context);
+    const unreadable = path.join(missing.archivePath, path.dirname(missing.versions[1].file));
+    await chmod(unreadable, 0);
+    try {
+      const response = await fetch(`${api}/artifacts/versions?file=${encodeURIComponent(file)}`);
+      assert.equal(response.status, 200);
+      const degraded = await response.json();
+      assert.deepEqual(degraded.versions[1].revisionContext, []);
+      assert.equal(degraded.versions[0].revisionContext[0].id, 'r3');
+    } finally { await chmod(unreadable, 0o755); }
   }, { html: html(context) });
 });
 
-integration('synthetic: server log availability survives an unavailable server and rejects browser paths', async () => {
+test('synthetic: server log availability survives an unavailable server and rejects browser paths', async () => {
   await fixture(async ({ api, stateDir }) => {
     const library = await (await fetch(`${api}/library`)).json();
     assert.equal(library.server.running, false);
@@ -60,7 +67,7 @@ integration('synthetic: server log availability survives an unavailable server a
   }, { log: true, health: { app: 'other-service' } });
 });
 
-integration('synthetic: older Lavish data adds no warnings, revision declarations or log action', async () => {
+test('synthetic: older Lavish data adds no warnings, revision declarations or log action', async () => {
   await fixture(async ({ api, file }) => {
     const library = await (await fetch(`${api}/library`)).json();
     assert.equal(library.server.running, true);
@@ -79,6 +86,12 @@ test('failed artifacts are excluded from Live while older open sessions retain t
   const filter = { selectedProject: 'all', query: '', serverRunning: true, statusFilter: 'live' };
   assert.deepEqual(filterLibraryArtifacts(artifacts, filter).map((artifact) => artifact.title), ['Older session']);
   assert.equal(countLibraryFilters(artifacts, filter).live, 1);
+});
+
+test('artifact failures stay beside waiting feedback and clear once the review has ended', () => {
+  assert.equal(visibleArtifactFailures({ sessionStatus: 'feedback', artifactFailures: failures }).length, 2);
+  assert.deepEqual(visibleArtifactFailures({ sessionStatus: 'ended', artifactFailures: failures }), []);
+  assert.deepEqual(visibleArtifactFailures({ sessionStatus: 'open' }), []);
 });
 
 test('fatal diagnostics ignore absent, malformed and layout-only payloads and bound details', () => {
