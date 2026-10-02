@@ -1,61 +1,91 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { access, mkdtemp, mkdir, readFile, writeFile, chmod, rm } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { chmod, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import os from 'node:os';
 import path from 'node:path';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ts from 'typescript';
+import { trashFixture } from './fixtures/trash-library.mjs';
 
-const root = process.cwd();
-
-test('bulk trash validates selection, refuses live files, and retains catalog tombstones', async () => {
-  const fixture = await mkdtemp(path.join(os.tmpdir(), 'lavish-trash-test-'));
-  const project = path.join(fixture, 'project');
-  const lavishDir = path.join(project, '.lavish');
-  const stateDir = path.join(fixture, 'state');
-  const configDir = path.join(fixture, 'config');
-  const trashDir = path.join(fixture, 'trash');
-  await Promise.all([lavishDir, stateDir, configDir, trashDir].map((dir) => mkdir(dir, { recursive: true })));
-  const live = path.join(lavishDir, 'live.html');
-  const finished = path.join(lavishDir, 'finished.html');
-  const missing = path.join(lavishDir, 'missing.html');
-  const id = (file) => createHash('sha1').update(file).digest('hex').slice(0, 12);
-  await writeFile(live, '<title>Live</title>');
-  await writeFile(finished, '<title>Finished</title>');
-  await writeFile(path.join(stateDir, 'state.json'), JSON.stringify({ sessions: {
-    live: { file: live, status: 'open' }, finished: { file: finished, status: 'ended' }, missing: { file: missing, status: 'open' },
-  } }));
-  await writeFile(path.join(configDir, 'config.json'), JSON.stringify({ projects: [{ path: project, name: 'Project' }] }));
-  const fakeTrash = path.join(fixture, 'trash-file');
-  await writeFile(fakeTrash, '#!/bin/sh\nexec /bin/mv "$1" "$TEST_TRASH_DIR/"\n');
-  await chmod(fakeTrash, 0o755);
-  const port = 45_000 + (process.pid % 1_000);
-  const service = spawn(process.execPath, [path.join(root, 'scripts/local-api.mjs')], {
-    cwd: root, stdio: 'ignore', env: { ...process.env, LAVISH_TRACKER_API_PORT: String(port), LAVISH_TRACKER_CONFIG_DIR: configDir,
-      LAVISH_AXI_STATE_DIR: stateDir, LAVISH_TRACKER_DROP_DIR: '', LAVISH_TRACKER_TRASH_BIN: fakeTrash, TEST_TRASH_DIR: trashDir },
+test('bulk trash validates selection, ends confirmed reviews first, and retains tombstones', async () => {
+  const f = await trashFixture({ apiPort: 45_000 + (process.pid % 1_000) });
+  const request = (names, endReviews = false) => fetch(`${f.api}/api/artifacts/trash`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids: names.map((name) => f.id(f.files[name])), endReviews }),
   });
   try {
-    let ready = false;
-    for (let attempt = 0; attempt < 40; attempt++) {
-      try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) { ready = true; break; } } catch { /* starting */ }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal((await request(['live', 'finished'])).status, 400);
+    assert.equal((await f.readState()).sessions.live.status, 'open');
+    assert.deepEqual(f.endedKeys, []);
+    await f.access(f.files.finished);
+    assert.equal((await request(['finished', 'missing'], true)).status, 200);
+    await assert.rejects(f.access(f.files.finished));
+    await f.access(path.join(f.trashDir, 'finished.html'));
+    assert.equal((await request(['finished'])).status, 400);
+    f.behavior.refuse = true;
+    assert.equal((await request(['live'], true)).status, 400);
+    await f.access(f.files.live);
+    f.behavior.refuse = false;
+    f.behavior.wrongState = true;
+    assert.equal((await request(['live'], true)).status, 400);
+    assert.equal((await f.readState()).sessions.live.status, 'open');
+    f.behavior.wrongState = false;
+    f.behavior.pretendEnded = true;
+    assert.equal((await request(['live'], true)).status, 400);
+    await f.access(f.files.live);
+    f.behavior.pretendEnded = false;
+    assert.equal((await request(['live', 'feedback'], true)).status, 200);
+    const state = await f.readState();
+    assert.equal(state.sessions['live-secondary'].status, 'ended');
+    assert.equal(state.sessions['live-secondary'].ended_by, 'user');
+    for (const name of ['live', 'feedback']) {
+      assert.equal(state.sessions[name].status, 'ended');
+      assert.equal(state.sessions[name].ended_by, 'user');
+      await assert.rejects(f.access(f.files[name]));
+      await f.access(path.join(f.trashDir, `${name}.html`));
     }
-    assert.equal(ready, true);
-    const request = (ids) => fetch(`http://127.0.0.1:${port}/api/artifacts/trash`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }),
+    const library = await (await fetch(`${f.api}/api/library`)).json();
+    assert.deepEqual(library.artifacts, []);
+    const config = JSON.parse(await readFile(path.join(f.configDir, 'config.json'), 'utf8'));
+    assert.deepEqual(config.trashedArtifacts.sort(), Object.values(f.files).sort());
+  } finally { await f.close(); }
+});
+
+test('confirmation renders refusal inside the same action group as its buttons', async () => {
+  const require = createRequire(import.meta.url);
+  const source = await readFile(path.join(process.cwd(), 'app/trash-confirmation.tsx'), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext } }).outputText
+    .replaceAll('"react/jsx-runtime"', JSON.stringify(`file://${require.resolve('react/jsx-runtime')}`))
+    .replaceAll("'react'", JSON.stringify(`file://${require.resolve('react')}`));
+  const { TrashConfirmation } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+  const html = renderToStaticMarkup(React.createElement(TrashConfirmation, {
+    count: 1, activeCount: 1, busy: false, error: 'Fixture refusal', onConfirm() {}, onCancel() {},
+  }));
+  assert.match(html, /role="group"/);
+  assert.match(html, /class="trash-confirm"/);
+  assert.match(html, /role="alert">Fixture refusal<\/p><\/div>$/);
+  assert.ok(html.indexOf('role="alert"') > html.indexOf('<button'));
+});
+
+test('a mover failure returns 409 after review end and retains the file in the catalog', async () => {
+  const f = await trashFixture({ apiPort: 45_000 + (process.pid % 1_000) });
+  try {
+    await chmod(f.trashDir, 0o000);
+    const response = await fetch(`${f.api}/api/artifacts/trash`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [f.id(f.files.live)], endReviews: true }),
     });
-    assert.equal((await request([id(live), id(finished)])).status, 400);
-    await access(finished);
-    assert.equal((await request([id(finished), id(missing)])).status, 200);
-    await assert.rejects(access(finished));
-    await access(path.join(trashDir, 'finished.html'));
-    const library = await (await fetch(`http://127.0.0.1:${port}/api/library`)).json();
-    assert.deepEqual(library.artifacts.map((item) => item.title), ['Live']);
-    assert.equal((await request([id(finished)])).status, 400);
-    const config = JSON.parse(await readFile(path.join(configDir, 'config.json'), 'utf8'));
-    assert.deepEqual(config.trashedArtifacts.sort(), [finished, missing].sort());
+    assert.equal(response.status, 409);
+    assert.deepEqual((await response.json()).moved, []);
+    assert.equal((await f.readState()).sessions.live.status, 'ended');
+    await f.access(f.files.live);
+    const library = await (await fetch(`${f.api}/api/library`)).json();
+    const retained = library.artifacts.find((artifact) => artifact.id === f.id(f.files.live));
+    assert.equal(retained.exists, true);
+    assert.equal(retained.sessionStatus, 'ended');
   } finally {
-    service.kill('SIGTERM');
-    await rm(fixture, { recursive: true, force: true });
+    await chmod(f.trashDir, 0o700);
+    await f.close();
   }
 });

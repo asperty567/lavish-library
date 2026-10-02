@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
 import { apiFetch } from './api-client';
 import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
+import { TrashConfirmation } from './trash-confirmation';
 
 type Project = {
   id: string;
@@ -133,8 +134,12 @@ export default function Home() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [trashing, setTrashing] = useState(false);
+  const [trashRequest, setTrashRequest] = useState<{ ids: string[]; anchor: string } | null>(null);
+  const [trashErrors, setTrashErrors] = useState<Record<string, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const trackedSearchRef = useRef('');
+  const trashActiveCount = (library?.artifacts ?? []).filter((artifact) => trashRequest?.ids.includes(artifact.id)
+    && (artifact.sessionStatus === 'open' || artifact.sessionStatus === 'feedback')).length;
 
   async function loadLibrary(quiet = false) {
     if (!quiet) setLoading(true);
@@ -183,7 +188,7 @@ export default function Home() {
       query,
       statusFilter,
       serverRunning: Boolean(library?.server.running),
-    });
+    }, (artifact) => artifact.exists && Boolean(trashErrors[artifact.id] || trashRequest?.ids.includes(artifact.id)));
     items.sort((a, b) => {
       if (sort === 'name') return a.title.localeCompare(b.title);
       const aDate = sort === 'edited' ? a.modifiedAt : a.lastUsedAt ?? a.modifiedAt;
@@ -191,7 +196,7 @@ export default function Home() {
       return new Date(bDate ?? 0).getTime() - new Date(aDate ?? 0).getTime();
     });
     return items;
-  }, [library, query, selectedProject, sort, statusFilter]);
+  }, [library, query, selectedProject, sort, statusFilter, trashErrors, trashRequest]);
 
   const filterCounts = useMemo(() => countLibraryFilters(library?.artifacts ?? [], {
     selectedProject,
@@ -269,28 +274,49 @@ export default function Home() {
     }
   }
 
-  async function trashArtifacts(ids: string[]) {
+  function requestTrash(ids: string[], anchor: string) {
     const targets = (library?.artifacts ?? []).filter((artifact) => ids.includes(artifact.id));
-    if (targets.length !== ids.length || !targets.length) return;
-    const active = targets.filter((artifact) => artifact.exists && (artifact.sessionStatus === 'open' || artifact.sessionStatus === 'feedback'));
-    if (active.length) {
-      setNotice('End active reviews before moving their files to Trash.');
+    setTrashErrors((current) => ({ ...current, [anchor]: '' }));
+    if (targets.length !== ids.length || !targets.length) {
+      setTrashErrors((current) => ({ ...current, [anchor]: 'Refresh the Library and select entries again.' }));
       return;
     }
-    const files = targets.filter((artifact) => artifact.exists).length;
-    if (!window.confirm(`Move ${files} file${files === 1 ? '' : 's'} to Mac Trash and remove ${targets.length} entr${targets.length === 1 ? 'y' : 'ies'} from the Library? Saved versions and Lavish session history stay on disk.`)) return;
+    setTrashRequest({ ids, anchor });
+  }
+
+  function cancelTrash() {
+    const anchor = trashRequest?.anchor;
+    setTrashRequest(null);
+    if (anchor) document.getElementById(`trash-${anchor}`)?.focus();
+  }
+
+  function changeSelection(update: React.SetStateAction<string[]>) {
+    setSelectedIds(update);
+    if (trashRequest?.anchor === 'bulk') setTrashRequest(null);
+  }
+
+  async function trashArtifacts() {
+    if (!trashRequest) return;
+    const { ids, anchor } = trashRequest;
+    if (anchor === 'bulk' && (ids.length !== selectedIds.length || ids.some((id) => !selectedIds.includes(id)))) {
+      cancelTrash();
+      return;
+    }
     setTrashing(true);
+    setTrashErrors((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, ''])), [anchor]: '' }));
     try {
       const response = await apiFetch('/artifacts/trash', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, endReviews: trashActiveCount > 0 }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not move selected files to Trash.');
+      const result: unknown = await response.json();
+      if (!response.ok) throw new Error(typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string' ? result.error : 'Could not move selected files to Trash.');
       setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+      setTrashRequest(null);
       await loadLibrary(true);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not move selected files to Trash.';
+      setTrashErrors((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, message])), [anchor]: message }));
       await loadLibrary(true);
-      setNotice(error instanceof Error ? error.message : 'Could not move selected files to Trash.');
     } finally {
       setTrashing(false);
     }
@@ -525,12 +551,15 @@ export default function Home() {
               <button className={statusFilter === 'discovered' ? 'selected' : ''} onClick={() => setStatusFilter('discovered')}>Discovered <span>{filterCounts.discovered}</span></button>
             </div>
             <div className="view-tools">
-              <label className="bulk-select"><input type="checkbox" aria-label="Select all visible lavishes" checked={artifacts.length > 0 && artifacts.every((artifact) => selectedIds.includes(artifact.id))} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...artifacts.map((artifact) => artifact.id)])] : current.filter((id) => !artifacts.some((artifact) => artifact.id === id)))} /> Select visible</label>
-              {selectedIds.length > 0 && <><span className="selection-count">{selectedIds.length} selected</span><button disabled={trashing} onClick={() => void trashArtifacts(selectedIds)}>Move to Trash</button><button onClick={() => setSelectedIds([])}>Clear</button></>}
+              <label className="bulk-select"><input type="checkbox" aria-label="Select all visible lavishes" disabled={trashing} checked={artifacts.length > 0 && artifacts.every((artifact) => selectedIds.includes(artifact.id))} onChange={(event) => changeSelection((current) => event.target.checked ? [...new Set([...current, ...artifacts.map((artifact) => artifact.id)])] : current.filter((id) => !artifacts.some((artifact) => artifact.id === id)))} /> Select visible</label>
+              {selectedIds.length > 0 && <><span className="selection-count">{selectedIds.length} selected</span><button id="trash-bulk" disabled={trashing} onClick={() => requestTrash(selectedIds, 'bulk')}>Move to Trash</button><button disabled={trashing} onClick={() => changeSelection([])}>Clear</button></>}
               <label>Sort <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="recent">Recently used</option><option value="edited">Last edited</option><option value="name">Name</option></select></label>
               <div className="view-switch"><button className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Grid view"><Icon name="grid" /></button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')} aria-label="List view"><Icon name="list" /></button></div>
             </div>
           </div>
+
+          {trashRequest?.anchor === 'bulk' && <TrashConfirmation count={trashRequest.ids.length} activeCount={trashActiveCount} busy={trashing} error={trashErrors.bulk || ''} onConfirm={() => void trashArtifacts()} onCancel={cancelTrash} />}
+          {!trashRequest && trashErrors.bulk && <p className="trash-error" role="alert">{trashErrors.bulk}</p>}
 
           {notice && <div className="notice" role="alert">{notice}</div>}
 
@@ -553,9 +582,11 @@ export default function Home() {
                       <div className="card-actions">{artifact.exists && artifact.url ? <a href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></a> : <button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists} title={!artifact.exists ? 'That file is missing on this Mac' : undefined}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button>}</div>
                     </div>
                     <div className="card-body">
-                      <div className="card-heading"><label className="card-select"><input type="checkbox" aria-label={`Select ${artifact.title}`} checked={selectedIds.includes(artifact.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, artifact.id] : current.filter((id) => id !== artifact.id))} /></label><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
+                      <div className="card-heading"><label className="card-select"><input type="checkbox" aria-label={`Select ${artifact.title}`} disabled={trashing} checked={selectedIds.includes(artifact.id)} onChange={(event) => changeSelection((current) => event.target.checked ? [...current, artifact.id] : current.filter((id) => id !== artifact.id))} /></label><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
                       <p className="description">{artifact.description || artifact.relativePath}</p>
-                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span>{artifact.exists && artifact.url ? <a className="open-link" href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'}</a> : null}<button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button><button disabled={trashing} onClick={() => void trashArtifacts([artifact.id])} aria-label={`Move ${artifact.title} to Trash`}>Trash</button></div>
+                      <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span>{artifact.exists && artifact.url ? <a className="open-link" href={artifact.url}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'}</a> : null}<button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button><button id={`trash-${artifact.id}`} disabled={trashing} onClick={() => requestTrash([artifact.id], artifact.id)} aria-label={`Move ${artifact.title} to Trash`}>Trash</button></div>
+                      {trashRequest?.anchor === artifact.id && <TrashConfirmation count={trashRequest.ids.length} activeCount={trashActiveCount} busy={trashing} error={trashErrors[artifact.id] || ''} onConfirm={() => void trashArtifacts()} onCancel={cancelTrash} />}
+                      {trashRequest?.anchor !== artifact.id && trashErrors[artifact.id] && <p className="trash-error" role="alert">{trashErrors[artifact.id]}</p>}
                     </div>
                   </article>
                 );

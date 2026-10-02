@@ -37,3 +37,14 @@ test('reports no live artifacts while the Lavish server is stopped', () => {
   });
   assert.equal(counts.live, 0);
 });
+
+test('retains an ended action context in Live without bypassing project or search', () => {
+  const retain = (artifact) => artifact.file === '/alpha/closed.html';
+  const filter = { selectedProject: 'alpha', query: '', statusFilter: 'live', serverRunning: true };
+  assert.deepEqual(filterLibraryArtifacts(artifacts, filter, retain).map((artifact) => artifact.file),
+    ['/alpha/live.html', '/alpha/closed.html']);
+  assert.deepEqual(filterLibraryArtifacts(artifacts, { ...filter, query: 'launch' }, retain).map((artifact) => artifact.file),
+    ['/alpha/live.html']);
+  assert.deepEqual(filterLibraryArtifacts(artifacts, { ...filter, selectedProject: 'beta' }, retain).map((artifact) => artifact.file),
+    ['/beta/live.html']);
+});
