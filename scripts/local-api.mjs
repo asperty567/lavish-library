@@ -24,6 +24,7 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const ANALYTICS_FILE = path.join(CONFIG_DIR, 'analytics.json');
 const LAVISH_BIN = process.env.LAVISH_AXI_BIN || '/opt/homebrew/bin/lavish-axi';
 const TRASH_BIN = process.env.LAVISH_TRACKER_TRASH_BIN || '/usr/bin/trash';
+const REVIEW_ORIGIN = `http://127.0.0.1:${Number(process.env.LAVISH_AXI_PORT || 4387)}`;
 const ARCHIVE_NAME = 'Lavish Library Archive';
 const API_TOKEN = randomBytes(32).toString('base64url');
 const runLavish = promisify(execFile);
@@ -357,7 +358,7 @@ async function scanKnownArtifacts(options = {}) {
 
 async function serverRunning() {
   try {
-    const response = await fetch('http://127.0.0.1:4387/health', { signal: AbortSignal.timeout(650) });
+    const response = await fetch(`${REVIEW_ORIGIN}/health`, { signal: AbortSignal.timeout(650) });
     const value = await response.json();
     return response.ok && value.app === 'lavish-axi';
   } catch { return false; }
@@ -1287,14 +1288,53 @@ const server = createServer(async (req, res) => {
       const byId = new Map(library.artifacts.map((artifact) => [artifact.id, artifact]));
       const targets = input.ids.map((id) => byId.get(id));
       if (targets.some((artifact) => !artifact)) throw new Error('Refresh the Library and select entries again.');
-      if (targets.some((artifact) => artifact.exists && (artifact.sessionStatus === 'open' || artifact.sessionStatus === 'feedback'))) {
-        throw new Error('End active reviews before moving their files to Trash.');
-      }
       // Validate every target before touching any file. Never follow a symlink or trash a directory.
       for (const artifact of targets) {
         if (!artifact.exists) continue;
-        const fileStat = await lstat(artifact.file);
+        const fileStat = await lstat(artifact.file).catch(() => {
+          throw new Error('Could not check a selected file. No files were moved. Refresh the Library and try again.');
+        });
         if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new Error('Only regular files can be moved to Trash.');
+      }
+      const targetFiles = new Set(targets.map((artifact) => artifact.file));
+      const activeSessions = (state) => Object.entries(state.sessions || {}).filter(([, session]) =>
+        targetFiles.has(path.resolve(session.file)) && (session.status === 'open' || session.status === 'feedback'));
+      let state;
+      try {
+        state = JSON.parse(await readFile(STATE_FILE, 'utf8').catch((error) => {
+          if (error.code === 'ENOENT') return '{"sessions":{}}';
+          throw error;
+        }));
+      } catch {
+        throw new Error('Could not read review status. No files were moved. Check the Lavish review server and try again.');
+      }
+      const sessions = activeSessions(state);
+      if (sessions.length && input.endReviews !== true) {
+        throw new Error('This review is still open. Confirm ending it before moving the file to Trash.');
+      }
+      if (sessions.length) {
+        try {
+          // Use Lavish's browser end route: user-ended reviews cannot reopen uninvited.
+          // Verify the daemon owns this state directory before sending any mutation.
+          const health = await fetch(`${REVIEW_ORIGIN}/health`, { signal: AbortSignal.timeout(3_000) });
+          const server = await health.json();
+          if (!health.ok || server.app !== 'lavish-axi' || path.resolve(server.state_dir || '') !== path.dirname(path.resolve(STATE_FILE))) {
+            throw new Error('The review server is not serving this Library.');
+          }
+          for (const [key] of sessions) {
+            const response = await fetch(`${REVIEW_ORIGIN}/api/${encodeURIComponent(key)}/end`, {
+              method: 'POST', signal: AbortSignal.timeout(5_000),
+            });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'ended') throw new Error('The review server refused to end a review.');
+          }
+          const endedState = JSON.parse(await readFile(STATE_FILE, 'utf8'));
+          if (sessions.some(([key]) => endedState.sessions?.[key]?.status !== 'ended') || activeSessions(endedState).length) {
+            throw new Error('A review is still open. Refresh and try again.');
+          }
+        } catch {
+          throw new Error('Could not end every selected review. No files were moved. Check that the Lavish review server is running, then try again. Some reviews may already have ended.');
+        }
       }
       const config = await readConfig();
       const trashed = new Set(config.trashedArtifacts);
@@ -1306,8 +1346,8 @@ const server = createServer(async (req, res) => {
           config.trashedArtifacts = [...trashed];
           await saveConfig(config);
           moved.push(artifact.id);
-        } catch (error) {
-          return json(res, 409, { error: error instanceof Error ? error.message : 'Could not move file to Trash.', moved }, origin);
+        } catch {
+          return json(res, 409, { error: 'Could not move a selected file to Mac Trash. Check its permissions and try again. Earlier files in this selection may already have moved.', moved }, origin);
         }
       }
       return json(res, 200, { ok: true, moved }, origin);

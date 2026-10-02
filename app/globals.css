@@ -12,6 +12,11 @@
   --overlay: #1e1f24;
   --ghost: #63637a;
   --live: #22c55e;
+  --trash-gap: 8px;
+  --trash-padding: 16px;
+  --trash-radius: 9px;
+  --trash-font: 14px;
+  --trash-control-height: 44px;
 }
 
 * { box-sizing: border-box; }
@@ -111,6 +116,17 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 .view-switch button { width: 29px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--ghost); background: transparent; cursor: pointer; }
 .view-switch button.active { color: var(--wine); background: var(--elevated); box-shadow: 0 1px 4px rgb(51 42 34 / 10%); }
 .notice { margin-top: 16px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--overlay); font-size: 12px; }
+.trash-confirmation { margin-top: var(--trash-padding); padding: var(--trash-padding); border-radius: var(--trash-radius); color: var(--ink); background: var(--overlay); font-size: var(--trash-font); line-height: 1.5; overflow-wrap: anywhere; }
+.trash-confirmation p { margin: 0 0 var(--trash-gap); }
+.trash-confirmation .trash-detail { color: var(--muted); }
+.trash-confirmation-actions { display: flex; flex-wrap: wrap; gap: var(--trash-gap); }
+.trash-confirmation-actions button { appearance: none; min-height: var(--trash-control-height); max-width: 100%; padding: var(--trash-gap) var(--trash-padding); border: 1px solid var(--line); border-radius: var(--trash-radius); color: var(--ink); background: transparent; cursor: pointer; font-size: var(--trash-font); }
+.trash-confirmation-actions .trash-confirm { flex: 1 1 auto; border: 0; background: var(--wine-dark); font-weight: 700; }
+.trash-confirmation-actions .trash-confirm:hover { background: var(--wine); }
+.trash-confirmation-actions button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.trash-confirmation-actions button:disabled { opacity: .6; cursor: wait; }
+.trash-error { margin: var(--trash-gap) 0 0; color: var(--ink); font-size: var(--trash-font); line-height: 1.5; overflow-wrap: anywhere; }
+.trash-confirmation .trash-error { margin-top: var(--trash-gap); }
 
 .artifact-grid, .loading-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 25px; }
 .artifact-card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--elevated); box-shadow: 0 2px 3px rgb(42 34 28 / 3%), 0 11px 30px rgb(42 34 28 / 4%); transition: transform .2s ease, box-shadow .2s ease; }
