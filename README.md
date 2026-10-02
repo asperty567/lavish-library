@@ -8,6 +8,8 @@ A private, local-first browser library for finding and reopening Lavish review s
 - Automatically groups known artifacts by project
 - Finds additional HTML artifacts in project `.lavish` folders (generated `.export.html` and `-portable.html` copies are omitted unless opened in Lavish)
 - Shows session state, server availability, last-used time, edit time, and file size
+- Explains Lavish's recorded artifact/local-asset failures separately from server availability
+- Shows agent-declared revision context on saved artifact timelines and reveals local `server.log` in Finder when available
 - Searches, filters, sorts, and switches between grid and list views
 - Opens or reopens an artifact with `lavish-axi`
 - Reveals an artifact in Finder
@@ -70,6 +72,10 @@ LAVISH_AXI_BIN="$(command -v lavish-axi)" npm run dev
 ```
 
 The library health check uses `LAVISH_AXI_PORT` (default `4387`), matching the port used by the CLI. When Lavish reports an installation identity (v0.1.78+), the library checks that it belongs to the configured state directory. The configured state directory remains `LAVISH_AXI_STATE_DIR` or `~/.lavish-axi`.
+
+An available server does not confirm that an artifact rendered successfully. Cards with recorded fatal `artifact_failures` show **Review failed** and an expandable explanation, and are excluded from **Live**. These are the last diagnostics retained in Lavish's state; Lavish may clear them after delivering them to the agent. The library does not infer recovery from an HTTP health response. Older sessions without diagnostics add no warning.
+
+Version history reads the agent's `script[data-lavish-revisions]` JSON registry from each saved HTML copy, showing its labels, timestamps and summaries as **Agent-declared revisions**. These declarations describe the agent's revision context; they are separate from the archive's measured size and line changes. Missing or malformed registries add nothing. **Reveal server.log** appears under the server indicator when the configured state directory contains that ordinary file, including while the server is unavailable.
 
 Open [http://localhost:3000](http://localhost:3000). The library refreshes when the page loads and whenever you press the refresh button.
 

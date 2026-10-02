@@ -34,7 +34,10 @@ type Artifact = {
   versionCount: number;
   lastBackedUpAt: string | null;
   backupError: string | null;
+  artifactFailures?: { kind: string; detail: string }[];
 };
+
+type RevisionContext = { id: string; label: string; timestamp: string; summary: string };
 
 type ArchivedVersion = {
   id: string;
@@ -47,6 +50,7 @@ type ArchivedVersion = {
   isCurrent: boolean;
   sizeDelta: number;
   lineDelta: number;
+  revisionContext?: RevisionContext[];
 };
 
 type VersionHistory = {
@@ -60,7 +64,7 @@ type VersionHistory = {
 type Library = {
   projects: Project[];
   artifacts: Artifact[];
-  server: { running: boolean; url: string };
+  server: { running: boolean; url: string; logAvailable?: boolean };
   archive: {
     enabled: boolean;
     root: string | null;
@@ -91,6 +95,7 @@ function formatSize(bytes: number) {
 
 function statusLabel(artifact: Artifact, serverRunning: boolean) {
   if (!artifact.exists) return 'Missing';
+  if (artifact.artifactFailures?.length) return 'Review failed';
   if (artifact.sessionStatus === 'ended') return 'Review ended';
   if (artifact.pendingPrompts > 0 || artifact.sessionStatus === 'feedback') return 'Feedback waiting';
   if (artifact.sessionStatus === 'open' && serverRunning) return 'Live';
@@ -280,6 +285,17 @@ export default function Home() {
     }
   }
 
+  async function revealLog() {
+    try {
+      const response = await apiFetch('/server/reveal-log', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not reveal server.log.');
+      setNotice('Revealed server.log in Finder.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not reveal server.log.');
+    }
+  }
+
   async function chooseArchiveFolder() {
     setNotice('Choose a folder for your Lavish archive…');
     try {
@@ -424,7 +440,7 @@ export default function Home() {
         <div className="sidebar-foot">
           <div className="server-card">
             <span className={`server-light ${library?.server.running ? 'online' : ''}`} />
-            <div><strong>Lavish server</strong><span>{library?.server.running ? 'Running locally' : 'Starts when needed'}</span></div>
+            <div><strong>Lavish server</strong><span>{library?.server.running ? 'Running locally' : 'Starts when needed'}</span>{library?.server.logAvailable && <button className="reveal-log" onClick={() => void revealLog()}>Reveal server.log</button>}</div>
           </div>
           <p>Private to this Mac</p>
         </div>
@@ -516,7 +532,8 @@ export default function Home() {
                       <div className="card-actions"><button onClick={() => void openArtifact(artifact)} disabled={!artifact.exists}>{artifact.sessionStatus === 'ended' ? 'Reopen' : 'Open'} <Icon name="arrow" /></button></div>
                     </div>
                     <div className="card-body">
-                      <div className="card-heading"><div><span className={`status status-${artifact.sessionStatus}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
+                      <div className="card-heading"><div><span className={`status ${artifact.artifactFailures?.length ? 'status-failed' : `status-${artifact.sessionStatus}`}`}>{label}</span><h2>{artifact.title}</h2></div><button aria-label="Reveal in Finder" title="Reveal in Finder" onClick={() => void revealArtifact(artifact)}><Icon name="more" /></button></div>
+                      {!!artifact.artifactFailures?.length && <details className="artifact-warning"><summary>Lavish reported a review failure</summary><p>{library?.server.running ? 'The server is running, but this artifact or a local asset could not load.' : 'This artifact or a local asset could not load in Lavish.'} This is the last recorded failure; server health does not confirm a successful render.</p><ul>{artifact.artifactFailures.map((failure, index) => <li key={index}><strong>{failure.kind === 'artifact-unavailable' ? 'Artifact unavailable' : 'Local asset unavailable'}</strong>{failure.detail && <span>{failure.detail}</span>}</li>)}</ul></details>}
                       <p className="description">{artifact.description || artifact.relativePath}</p>
                       <div className="card-meta"><span><span className="project-glyph mini">{project?.name.slice(0, 1).toUpperCase() ?? '?'}</span>{project?.name ?? 'Loose artifacts'}</span><span><Icon name="clock" /> {relativeTime(artifact.lastUsedAt ?? artifact.modifiedAt)}</span><span><Icon name="file" /> {formatSize(artifact.size)}</span><button className={`history-chip ${artifact.versionCount ? 'protected' : ''}`} onClick={() => void loadHistory(artifact)}><Icon name="history" /> {library?.archive?.enabled ? artifact.versionCount : 'History'}</button></div>
                     </div>
@@ -550,6 +567,7 @@ export default function Home() {
                         <div className="version-title"><strong>{version.isCurrent ? 'Current protected version' : index === history.versions.length - 1 ? 'Original baseline' : `Revision ${history.versions.length - index}`}</strong><span>{relativeTime(version.createdAt)}</span></div>
                         <p>{fullDate(version.createdAt)} · {formatSize(version.size)} · {version.lineCount.toLocaleString()} lines</p>
                         <div className="version-deltas"><span>{deltaLabel(version.lineDelta, 'lines')}</span><span>{version.assetsCopied} local assets</span><span>{version.reason === 'pre-restore' ? 'Safety copy' : version.reason === 'restore' ? 'Restored' : version.reason === 'change' ? 'Auto-saved' : version.reason === 'manual' ? 'Manual copy' : 'Scan'}</span></div>
+                        {!!version.revisionContext?.length && <section className="revision-context" aria-label="Agent-declared revision context"><h3>Agent-declared revisions</h3><p>Context from this saved artifact.</p>{version.revisionContext.map((revision) => <div className="revision-declaration" key={revision.id}><strong>{revision.label}</strong>{revision.timestamp && <time>{revision.timestamp}</time>}{revision.summary && <p>{revision.summary}</p>}</div>)}</section>}
                         <div className="version-actions"><button disabled={history.sourceExists === false} onClick={() => void openArchivedVersion(version)}>Open copy <Icon name="arrow" /></button><button disabled={version.isCurrent} onClick={() => void restoreArchivedVersion(version)}><Icon name="restore" /> {version.isCurrent ? 'In use' : 'Restore'}</button></div>
                       </div>
                     </article>
