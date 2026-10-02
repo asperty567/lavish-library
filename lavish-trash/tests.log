@@ -1,0 +1,38 @@
+
+> lavish-tracker@0.3.1 test
+> node --test tests/*.test.mjs
+
+✔ bootstraps a browser token and renews it once after a service restart (36.624291ms)
+✔ uses the Tailscale host for the companion API when the UI is not on localhost (0.936375ms)
+✔ filters artifacts by project and status (0.751083ms)
+✔ counts each selector within the selected project and search (0.11675ms)
+✔ reports no live artifacts while the Lavish server is stopped (0.070333ms)
+✔ retains an ended action context in Live without bypassing project or search (0.478875ms)
+✔ builds a local library with known session activity (82.749375ms)
+✔ opens by artifact id or file path with a canonical 4389 session URL (150.3205ms)
+✔ refuses a fabricated Open link when Lavish does not establish a session (285.19825ms)
+✔ records search, value, and outcome signals in insights (29.928292ms)
+✔ never enables foreground-time tracking (2.68425ms)
+✔ rejects hostile browser origins and requires a session token (10.591375ms)
+✔ allows the configured Tailscale UI origin and Serve host (287.241041ms)
+✔ ignores archive side effects when resolving one artifact (116.682ms)
+✔ rejects HTML files outside the known Lavish library (3.40625ms)
+✔ library refresh updates the cached artifact allowlist (4.322333ms)
+✔ indexes Desktop drop files and opens them over HTTP for the tailnet (131.144125ms)
+✔ hides discovered drop copies when a live session has the same title (176.470042ms)
+✔ excludes Medik8 packshot drops and product-code photo titles from the catalog (128.161709ms)
+✔ bulk trash validates selection, ends confirmed reviews first, and retains tombstones (453.7095ms)
+✔ confirmation renders refusal inside the same action group as its buttons (41.442666ms)
+✔ a mover failure returns 409 after review end and retains the file in the catalog (228.630125ms)
+✔ listens on :3000 by default (0.717083ms)
+✔ adds loopback :3000 when a stale UI_PORT is 3007 and PUBLIC_ORIGIN is the catalog (0.0865ms)
+✔ does not steal :3000 when PUBLIC_ORIGIN is unset (0.054584ms)
+✔ does not bind :443 when PUBLIC_ORIGIN has no explicit port (0.060292ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1479.642792
