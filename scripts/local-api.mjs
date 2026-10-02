@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createPreviewCache } from './artifact-previews.mjs';
+import { artifactFailures, revisionContext, revealServerLog, serverLogPath } from './review-diagnostics.mjs';
 
 const PORT = Number(process.env.LAVISH_TRACKER_API_PORT || 4318);
 const requestedUiPort = Number(process.env.LAVISH_TRACKER_UI_PORT || 3000);
@@ -570,10 +571,11 @@ function syncArtifactWatchers(config, artifacts, watchDirsByFile) {
 }
 
 async function buildLibrary() {
-  const [knownArtifacts, config, running] = await Promise.all([
+  const [knownArtifacts, config, running, logPath] = await Promise.all([
     scanKnownArtifacts({ force: true }),
     readConfig(),
     serverRunning(),
+    serverLogPath(path.dirname(STATE_FILE)),
   ]);
   const sessions = knownArtifacts.sessions;
   const projectMap = new Map(await Promise.all(
@@ -608,6 +610,7 @@ async function buildLibrary() {
       sessionStatus: session?.status || 'discovered', pendingPrompts: Number(session?.pending_prompts || 0),
       url: session?.url || null, endedBy: session?.ended_by || null,
       sessionMessages: sessionReplies(session),
+      artifactFailures: artifactFailures(session),
       versionCount: 0, lastBackedUpAt: null, backupError: null,
     });
   }
@@ -649,7 +652,7 @@ async function buildLibrary() {
   return {
     projects,
     artifacts,
-    server: { running, url: LAVISH_ORIGIN },
+    server: { running, url: LAVISH_ORIGIN, ...(logPath ? { logAvailable: true } : {}) },
     archive: {
       enabled: Boolean(config.archiveRoot),
       root: config.archiveRoot,
@@ -710,6 +713,18 @@ async function artifactForFile(file) {
   return artifact;
 }
 
+// Read declarations from the saved bytes, including archives made before
+// this feature. Never attribute today's declarations to an older snapshot.
+async function archivedRevisionContext(directory, version) {
+  try {
+    const archivedFile = path.resolve(directory, version.file);
+    if (!insideFolder(directory, archivedFile) || await localPathStatus(directory, archivedFile) !== 'file') return [];
+    return revisionContext(await readFile(archivedFile, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
 async function versionsFor(file) {
   const artifact = await knownArtifactForFile(file);
   const config = await readConfig();
@@ -727,16 +742,19 @@ async function versionsFor(file) {
     const archivedSha = await archivedBundleSha(config, artifact, version).catch(() => null);
     if (archivedSha === currentSha) currentVersionIndex = index;
   }
-  const versions = manifest.versions.map((version, index) => {
+  const directory = artifactArchiveDir(config, artifact);
+  const versions = [];
+  for (const [index, version] of manifest.versions.entries()) {
     const previous = manifest.versions[index - 1];
-    return {
+    versions.unshift({
       ...version,
+      revisionContext: await archivedRevisionContext(directory, version),
       isCurrent: index === currentVersionIndex,
       sizeDelta: previous ? version.size - previous.size : 0,
       lineDelta: previous ? version.lineCount - previous.lineCount : 0,
-    };
-  }).reverse();
-  return { enabled: true, archivePath: artifactArchiveDir(config, artifact), sourceFile: artifact.file, sourceExists: artifact.exists, versions };
+    });
+  }
+  return { enabled: true, archivePath: directory, sourceFile: artifact.file, sourceExists: artifact.exists, versions };
 }
 
 async function resolveVersion(file, versionId, { allowMissing = false } = {}) {
@@ -1274,6 +1292,10 @@ const server = createServer(async (req, res) => {
       const folder = archiveHome(config);
       if (!folder || !(await exists(folder))) throw new Error('No archive folder has been created yet.');
       await launchDetached('/usr/bin/open', [folder]);
+      return json(res, 202, { ok: true }, origin);
+    }
+    if (req.method === 'POST' && url.pathname === '/api/server/reveal-log') {
+      await revealServerLog(path.dirname(STATE_FILE), launchDetached);
       return json(res, 202, { ok: true }, origin);
     }
     if (req.method === 'POST' && url.pathname === '/api/artifacts/snapshot') {

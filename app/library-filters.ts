@@ -4,7 +4,13 @@ export type FilterableArtifact = {
   description: string;
   file: string;
   sessionStatus: 'open' | 'feedback' | 'ended' | 'discovered';
+  artifactFailures?: { kind: string; detail: string }[];
 };
+
+// Failures recorded for an ended review no longer need attention.
+export function visibleArtifactFailures(artifact: Pick<FilterableArtifact, 'sessionStatus' | 'artifactFailures'>) {
+  return artifact.sessionStatus === 'ended' ? [] : artifact.artifactFailures ?? [];
+}
 
 export type LibraryFilter = {
   selectedProject: string;
