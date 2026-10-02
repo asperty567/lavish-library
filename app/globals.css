@@ -170,7 +170,6 @@ kbd { padding: 3px 6px; border: 1px solid #e1dbd2; border-radius: 5px; color: #9
 .empty-state h2 { margin: 0; font: 500 24px var(--font-newsreader), Georgia, serif; }
 .empty-state p { color: var(--muted); font-size: 12px; }
 .empty-state button { margin-top: 6px; padding: 9px 13px; border: 0; border-radius: 8px; color: #fff; background: var(--wine); cursor: pointer; font-size: 11px; }
-.empty-state button + button { margin-left: 8px; }
 .icon { display: inline-grid; place-items: center; font-style: normal; line-height: 1; }
 
 .nav-insight-glyph { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: #fff; background: var(--wine); font: 12px Georgia, serif; }
