@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
 import ArtifactPreview from './artifact-preview';
 import { apiFetch } from './api-client';
-import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
+import { countLibraryFilters, filterLibraryArtifacts, getLibraryEmptyReason } from './library-filters';
 
 type Project = {
   id: string;
@@ -381,6 +381,14 @@ export default function Home() {
 
   const currentProject = library?.projects.find((project) => project.id === selectedProject);
   const liveCount = library?.artifacts.filter((artifact) => artifact.sessionStatus === 'open').length ?? 0;
+  const emptyReason = getLibraryEmptyReason(library?.artifacts ?? [], selectedProject);
+  const hasFilters = query.trim().length > 0 || statusFilter !== 'all';
+
+  function clearSearchAndFilters() {
+    setQuery('');
+    setStatusFilter('all');
+    searchRef.current?.focus();
+  }
 
   return (
     <main className="app-shell">
@@ -503,7 +511,23 @@ export default function Home() {
           {loading ? (
             <div className="loading-grid">{[1, 2, 3, 4, 5, 6].map((item) => <div className="skeleton" key={item} />)}</div>
           ) : artifacts.length === 0 ? (
-            <div className="empty-state"><div><Icon name="spark" /></div><h2>No lavishes found here yet</h2><p>Add a project folder, or create a <code>.lavish</code> artifact and refresh.</p><button onClick={() => setShowAdd(true)}>Add your first folder</button></div>
+            <div className="empty-state">
+              <div><Icon name={emptyReason === 'filters' ? 'search' : 'spark'} /></div>
+              {emptyReason === 'library' ? <>
+                <h2>No lavishes found here yet</h2>
+                <p>Add a project folder, or create a <code>.lavish</code> artifact and refresh.</p>
+                <button onClick={() => setShowAdd(true)}>Add your first folder</button>
+              </> : emptyReason === 'project' ? <>
+                <h2>No lavishes in this project yet</h2>
+                <p>Create a <code>.lavish</code> artifact in this project folder and refresh.</p>
+                {hasFilters && <button onClick={clearSearchAndFilters}>Clear search and filters</button>}
+                <button onClick={() => selectProject('all')}>View all projects</button>
+              </> : <>
+                <h2>No matching lavishes</h2>
+                <p>Your current search and filters have no matches{selectedProject !== 'all' ? ' in this project' : ''}. Clear them to see all lavishes{selectedProject !== 'all' ? ' in this project' : ''}.</p>
+                <button onClick={clearSearchAndFilters}>Clear search and filters</button>
+              </>}
+            </div>
           ) : (
             <div className={`artifact-${view}`}>
               {artifacts.map((artifact, index) => {
