@@ -26,7 +26,7 @@ export function filterLibraryArtifacts<T extends FilterableArtifact>(artifacts: 
   return artifacts.filter((artifact) => {
     const inProject = filter.selectedProject === 'all' || artifact.projectId === filter.selectedProject;
     const hasStatus = filter.statusFilter === 'all'
-      || (filter.statusFilter === 'live' && artifact.sessionStatus === 'open' && filter.serverRunning && !visibleArtifactFailures(artifact).length)
+      || (filter.statusFilter === 'live' && artifact.sessionStatus === 'open' && filter.serverRunning)
       || (filter.statusFilter === 'discovered' && artifact.sessionStatus === 'discovered');
     return inProject && hasStatus && (!needle || `${artifact.title} ${artifact.description} ${artifact.file}`.toLowerCase().includes(needle));
   });
@@ -36,7 +36,7 @@ export function countLibraryFilters(artifacts: FilterableArtifact[], scope: Libr
   const scopedArtifacts = filterLibraryArtifacts(artifacts, { ...scope, statusFilter: 'all' });
   return {
     all: scopedArtifacts.length,
-    live: scope.serverRunning ? scopedArtifacts.filter((artifact) => artifact.sessionStatus === 'open' && !visibleArtifactFailures(artifact).length).length : 0,
+    live: scope.serverRunning ? scopedArtifacts.filter((artifact) => artifact.sessionStatus === 'open').length : 0,
     discovered: scopedArtifacts.filter((artifact) => artifact.sessionStatus === 'discovered').length,
   };
 }

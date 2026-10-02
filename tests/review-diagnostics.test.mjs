@@ -78,14 +78,14 @@ test('synthetic: older Lavish data adds no warnings, revision declarations or lo
   });
 });
 
-test('failed artifacts are excluded from Live while older open sessions retain their status', () => {
+test('failed open sessions stay in Live alongside older open sessions', () => {
   const artifacts = [
     { projectId: 'demo', title: 'Failed', description: '', file: '/demo/fail.html', sessionStatus: 'open', artifactFailures: failures },
     { projectId: 'demo', title: 'Older session', description: '', file: '/demo/old.html', sessionStatus: 'open' },
   ];
   const filter = { selectedProject: 'all', query: '', serverRunning: true, statusFilter: 'live' };
-  assert.deepEqual(filterLibraryArtifacts(artifacts, filter).map((artifact) => artifact.title), ['Older session']);
-  assert.equal(countLibraryFilters(artifacts, filter).live, 1);
+  assert.deepEqual(filterLibraryArtifacts(artifacts, filter).map((artifact) => artifact.title), ['Failed', 'Older session']);
+  assert.equal(countLibraryFilters(artifacts, filter).live, 2);
 });
 
 test('artifact failures stay beside waiting feedback and clear once the review has ended', () => {
