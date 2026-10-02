@@ -960,7 +960,10 @@ async function buildInsights(days = 90) {
   }
   const searches = [...searchMap.values()].sort((a, b) => b.count - a.count || b.lastSearchedAt.localeCompare(a.lastSearchedAt)).slice(0, 20).map((entry) => ({ ...entry, averageResults: Math.round(entry.totalResults / entry.count) }));
 
-  const valuable = classified.filter((artifact) => artifact.versionCount > 1 || artifact.sessionMessages > 0 || artifact.feedback?.value === 'useful' || artifact.feedback?.outcome);
+  // Explicit negative feedback overrides both engagement and positive labels.
+  const valuable = classified.filter((artifact) => artifact.feedback?.value !== 'disposable'
+    && artifact.feedback?.outcome !== 'abandoned'
+    && (artifact.versionCount > 1 || artifact.sessionMessages > 0 || artifact.feedback?.value === 'useful' || artifact.feedback?.outcome));
   const dormant = valuable.filter((artifact) => !artifact.lastActivityAt || new Date(artifact.lastActivityAt).getTime() < Date.now() - 30 * 86_400_000).sort((a, b) => (b.versionCount + b.sessionMessages) - (a.versionCount + a.sessionMessages)).slice(0, 10).map((artifact) => ({
     id: artifact.id,
     title: artifact.title,
