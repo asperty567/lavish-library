@@ -1,0 +1,6 @@
+# braces 3.0.3 is reached only through eslint-config-next's lint tooling
+# (fast-glob -> micromatch). No fixed release exists yet. Review again by the date below.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2027-01-05
+reason = "Dev-only lint dependency (eslint-config-next > fast-glob > micromatch > braces); no fixed version published."
