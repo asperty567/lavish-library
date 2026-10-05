@@ -526,7 +526,7 @@ export default function Home() {
 
         {section === 'library' && showAdd && (
           <section className="add-panel" aria-label="Add a project folder">
-            <div><strong>Add a project folder</strong><p>We’ll look inside its <code>.lavish</code> folders. Nothing is uploaded. <strong>On phone:</strong> paste a full Mac path below — Choose folder only works on the Studio screen.</p></div>
+            <div><strong>Add a project folder</strong><p>We’ll look inside its <code>.lavish</code> folders. Nothing is uploaded. Paste a full Mac path below, or use Choose folder on the Studio.</p></div>
             <button className="choose-button" onClick={() => void chooseFolder()}><Icon name="folder" /> Choose folder</button>
             <form onSubmit={addManualFolder}>
               <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder="Or paste /Users/you/project" required />
@@ -568,6 +568,8 @@ export default function Home() {
             <div className="loading-grid" role="status" aria-busy="true" aria-label="Loading library">{[1, 2, 3, 4, 5, 6].map((item) => <div className="skeleton" key={item} />)}</div>
           ) : artifacts.length === 0 && notice ? (
             <div className="empty-state empty-state-error"><div><Icon name="file" /></div><h2>Library did not load</h2><p>{notice}</p><button onClick={() => void loadLibrary()}>Retry</button></div>
+          ) : artifacts.length === 0 && query.trim() ? (
+            <div className="empty-state"><div><Icon name="spark" /></div><h2>No lavishes match this search</h2><p>Try different words, or clear the search to see your library.</p><button onClick={() => setQuery('')}>Clear search</button></div>
           ) : artifacts.length === 0 ? (
             <div className="empty-state"><div><Icon name="spark" /></div><h2>No lavishes found here yet</h2><p>Add a project folder, or create a <code>.lavish</code> artifact and refresh.</p><button onClick={() => setShowAdd(true)}>Add your first folder</button></div>
           ) : (

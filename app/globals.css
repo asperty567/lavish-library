@@ -79,7 +79,7 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 .choose-button { display: flex; align-items: center; gap: 7px; padding: 0 13px; color: var(--wine); font-size: 12px; font-weight: 650; }
 .add-panel form { display: flex; }
 .add-panel form input { min-width: 0; flex: 1; height: 40px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px 0 0 9px; outline: 0; color: var(--ink); background: var(--paper); font: 11px var(--font-geist-mono), monospace; }
-.add-panel form button { padding: 0 14px; border: 0; border-radius: 0 9px 9px 0; color: var(--on-wine); background: var(--wine); cursor: pointer; }
+.add-panel form button { padding: 0 14px; border: 0; border-radius: 0 9px 9px 0; color: var(--on-wine); background: var(--wine); cursor: pointer; font-size: 12px; font-weight: 650; white-space: nowrap; }
 
 .archive-panel { display: grid; grid-template-columns: minmax(320px, 1fr) auto auto; align-items: center; gap: 24px; padding: 18px clamp(22px, 4vw, 58px); border-bottom: 1px solid var(--line); background: var(--overlay); }
 .archive-panel-copy { min-width: 0; display: flex; align-items: center; gap: 13px; }
@@ -111,7 +111,7 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 .view-tools { gap: 14px; flex-wrap: wrap; }
 .view-tools .bulk-select { display: flex; align-items: center; gap: 5px; text-transform: none; }
 .view-tools .selection-count { font-size: 11px; color: var(--muted); }
-.view-tools > button, .card-meta > button:last-child { border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; color: var(--muted); background: transparent; cursor: pointer; }
+.view-tools > button, .card-meta > button:last-child { border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .view-tools > button:disabled, .card-meta > button:disabled { opacity: .5; cursor: not-allowed; }
 .card-select { flex: 0 0 auto; padding-top: 2px; }
 .card-select input, .bulk-select input { accent-color: var(--wine); }
