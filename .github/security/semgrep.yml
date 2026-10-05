@@ -1,0 +1,13 @@
+rules:
+  - id: js-eval
+    languages: [javascript, typescript]
+    message: Dynamic evaluation can execute untrusted input. Confirm the input source.
+    severity: ERROR
+    pattern: eval(...)
+  - id: js-child-shell
+    languages: [javascript, typescript]
+    message: Shell execution requires a trusted command; prefer argument arrays without a shell.
+    severity: WARNING
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: execSync(...)
