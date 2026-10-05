@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from './api-client';
+import type { ApiError } from './api-client';
 
 type InsightSummary = {
   totalArtifacts: number;
@@ -66,7 +67,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     if (!quiet) setLoading(true);
     try {
       const response = await apiFetch(`/insights?days=${days}`, { cache: 'no-store' });
-      const value = await response.json();
+      const value = await response.json<Insights & ApiError>();
       if (!response.ok) throw new Error(value.error || 'Could not read Lavish insights.');
       setInsights(value);
       setError('');
@@ -81,7 +82,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     const controller = new AbortController();
     apiFetch(`/insights?days=${days}`, { cache: 'no-store', signal: controller.signal })
       .then(async (response) => {
-        const value = await response.json();
+        const value = await response.json<Insights & ApiError>();
         if (!response.ok) throw new Error(value.error || 'Could not read Lavish insights.');
         return value;
       })
@@ -105,7 +106,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ file: candidate.file, value, outcome }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not save that feedback.');
       setNotice('Feedback saved locally.');
       await load(true);
@@ -120,7 +121,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
       const response = await apiFetch('/artifacts/feedback', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: candidate.file, outcome }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not save that outcome.');
       setNotice('Outcome saved locally.');
       await load(true);
@@ -133,7 +134,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     const response = await apiFetch('/recommendations/action', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, action }),
     });
-    const result = await response.json();
+    const result = await response.json<ApiError>();
     if (!response.ok) return setNotice(result.error || 'Could not update that recommendation.');
     setNotice(action === 'snoozed' ? 'Snoozed for a week.' : action === 'done' ? 'Marked as done.' : 'Recommendation dismissed.');
     await load(true);
@@ -143,7 +144,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     const response = await apiFetch('/insights/settings', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(next),
     });
-    const result = await response.json();
+    const result = await response.json<ApiError & { readonly settings: Settings }>();
     if (!response.ok) return setNotice(result.error || 'Could not save those settings.');
     setInsights((current) => current ? { ...current, settings: result.settings } : current);
     setNotice('Reflection rhythm saved locally.');
@@ -154,7 +155,7 @@ export default function InsightsView({ mode }: { mode: 'observatory' | 'review' 
     const response = await apiFetch('/artifacts/open', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: candidate.id, file: candidate.file }),
     });
-    const result = await response.json();
+    const result = await response.json<ApiError & { readonly url?: string }>();
     if (!response.ok) return setNotice(result.error || 'Could not open that Lavish.');
     if (typeof result.url !== 'string') return setNotice('Lavish returned no session URL.');
     window.location.assign(result.url);

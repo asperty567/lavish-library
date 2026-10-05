@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import InsightsView from './insights-view';
 import { apiFetch } from './api-client';
+import type { ApiError } from './api-client';
 import { countLibraryFilters, filterLibraryArtifacts } from './library-filters';
 import { TrashConfirmation } from './trash-confirmation';
 
@@ -146,7 +147,7 @@ export default function Home() {
     try {
       const response = await apiFetch('/library', { cache: 'no-store' });
       if (!response.ok) throw new Error('The local library service did not respond.');
-      setLibrary(await response.json());
+      setLibrary(await response.json<Library>());
       setNotice('');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not load your library.');
@@ -160,7 +161,7 @@ export default function Home() {
     apiFetch('/library', { cache: 'no-store', signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error('The local library service did not respond.');
-        return response.json();
+        return response.json<Library>();
       })
       .then((value) => setLibrary(value))
       .catch((error) => {
@@ -230,7 +231,7 @@ export default function Home() {
     setNotice('Opening the folder picker…');
     try {
       const response = await apiFetch('/projects/choose', { method: 'POST' });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not add that folder.');
       setShowAdd(false);
       await loadLibrary(true);
@@ -247,7 +248,7 @@ export default function Home() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: manualPath }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not add that folder.');
       setManualPath('');
       setShowAdd(false);
@@ -265,7 +266,7 @@ export default function Home() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id: artifact.id, file: artifact.file, reopen: artifact.sessionStatus === 'ended' && artifact.endedBy === 'user', query: query.trim() || null }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError & { readonly url?: string }>();
       if (!response.ok) throw new Error(result.error || 'Lavish could not be opened.');
       if (typeof result.url !== 'string') throw new Error('Lavish returned no session URL.');
       window.location.assign(result.url);
@@ -330,7 +331,7 @@ export default function Home() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ file: artifact.file }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not reveal that file.');
       setNotice('');
     } catch (error) {
@@ -342,7 +343,7 @@ export default function Home() {
     setNotice('Choose a folder for your Lavish archive…');
     try {
       const response = await apiFetch('/archive/choose', { method: 'POST' });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not configure the archive.');
       setNotice('Creating the first protected copy of each Lavish…');
       await loadLibrary(true);
@@ -356,7 +357,7 @@ export default function Home() {
     if (!window.confirm('Pause automatic backups? Existing archived versions will be kept.')) return;
     try {
       const response = await apiFetch('/archive/disable', { method: 'POST' });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not pause backups.');
       await loadLibrary(true);
     } catch (error) {
@@ -367,7 +368,7 @@ export default function Home() {
   async function revealArchive() {
     try {
       const response = await apiFetch('/archive/reveal', { method: 'POST' });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not reveal the archive.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not reveal the archive.');
@@ -380,7 +381,7 @@ export default function Home() {
     setHistory(null);
     try {
       const response = await apiFetch(`/artifacts/versions?file=${encodeURIComponent(artifact.file)}`, { cache: 'no-store' });
-      const result = await response.json();
+      const result = await response.json<VersionHistory & ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not load version history.');
       setHistory(result);
     } catch (error) {
@@ -397,7 +398,7 @@ export default function Home() {
       const response = await apiFetch('/artifacts/snapshot', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: historyArtifact.file }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not create a snapshot.');
       await Promise.all([loadLibrary(true), loadHistory(historyArtifact)]);
       setNotice('Current version is protected.');
@@ -412,7 +413,7 @@ export default function Home() {
       const response = await apiFetch('/versions/open', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: historyArtifact.file, versionId: version.id }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not open that version.');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not open that version.');
@@ -427,7 +428,7 @@ export default function Home() {
       const response = await apiFetch('/versions/restore', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: historyArtifact.file, versionId: version.id }),
       });
-      const result = await response.json();
+      const result = await response.json<ApiError>();
       if (!response.ok) throw new Error(result.error || 'Could not restore that version.');
       await Promise.all([loadLibrary(true), loadHistory(historyArtifact)]);
       setNotice('Version restored. The previous current file was preserved in the archive.');

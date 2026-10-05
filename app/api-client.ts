@@ -1,3 +1,6 @@
+// local-api.mjs returns a string error on failed JSON requests.
+export type ApiError = { readonly error?: string };
+
 function apiOrigin() {
   if (typeof window === 'undefined') return 'http://127.0.0.1:4318';
   const { hostname, origin, port, protocol } = window.location;
@@ -13,7 +16,7 @@ async function sessionToken() {
   if (!tokenPromise) {
     tokenPromise = fetch(`${apiOrigin()}/api/session`, { cache: 'no-store' })
       .then(async (response) => {
-        const result = await response.json();
+        const result = await response.json<ApiError & { readonly token?: string }>();
         if (!response.ok || typeof result.token !== 'string') throw new Error(result.error || 'Could not authorize the local library service.');
         return result.token;
       })
